@@ -8,7 +8,7 @@
   4. 脚本读取 JSON 中每条 diary entry 的 tags 字段：
      - 同一条 entry 的 tags 自下而上排列；
      - 不同 entry 从左到右排列；
-     - 每个生成标签复制模板并替换模板文字。
+     - 每个生成标签复制模板，替换模板文字，并按 tag 设置文本框背景色。
 */
 
 (function () {
@@ -60,7 +60,7 @@
         // 参数区：之后主要改这里
         // ====================================================================
 
-        var JSON_FILE_NAME = "diary_entries.merged_sample_50.json";
+        var JSON_FILE_NAME = "diary_entries.merged.json";
         var SCRIPT_FILE = new File($.fileName);
         var JSON_PATH = SCRIPT_FILE.parent.fsName + "/" + JSON_FILE_NAME;
 
@@ -80,7 +80,7 @@
         var ENTRY_X_GAP = 14.755;
 
         // 只生成前多少条。设为 0 或负数表示生成 JSON 里全部条目。
-        var MAX_ENTRIES = 12;
+        var MAX_ENTRIES = 24;
 
         // 调试用：true 时，脚本一开始会弹窗确认自己已经启动。
         // 确认脚本可以正常运行后，可以改回 false。
@@ -93,8 +93,40 @@
         var KEEP_TEMPLATE_VISIBLE = true;
 
         // 给生成对象打的默认标签。运行脚本时会弹窗让你手动确认或修改。
-        var DEFAULT_GENERATED_LABEL = "generated_json_tag_label";
+        var DEFAULT_GENERATED_LABEL = "generated_json_tag_label_";
         var GENERATED_LABEL = DEFAULT_GENERATED_LABEL;
+
+        // tag 对应的文本框背景色。数组是 RGB。
+        var TAG_COLOR_MAP = {
+            a1: [246, 169, 174],
+            a2: [238, 135, 145],
+            a3: [226, 103, 118],
+            a4: [207, 78, 96],
+            b1: [248, 187, 122],
+            b2: [239, 158, 91],
+            b3: [224, 132, 72],
+            b4: [202, 106, 58],
+            c1: [244, 215, 118],
+            c2: [230, 195, 87],
+            c3: [211, 172, 63],
+            c4: [188, 146, 48],
+            d1: [166, 209, 139],
+            d2: [135, 189, 118],
+            d3: [105, 164, 98],
+            d4: [79, 139, 83],
+            e1: [132, 204, 196],
+            e2: [101, 181, 180],
+            e3: [77, 154, 166],
+            e4: [62, 127, 148],
+            f1: [143, 173, 222],
+            f2: [121, 144, 208],
+            f3: [105, 116, 190],
+            f4: [91, 91, 164],
+            g1: [191, 183, 207],
+            g2: [164, 153, 187],
+            g3: [137, 124, 164],
+            g4: [113, 99, 141],
+        };
 
         // ====================================================================
         // 工具函数
@@ -259,6 +291,59 @@
             }
 
             return -1;
+        }
+
+        function getOrCreateRgbColor(name, rgb) {
+            var colorName =
+                "tag_bg_" + name + "_" + rgb[0] + "_" + rgb[1] + "_" + rgb[2];
+            var color = doc.colors.itemByName(colorName);
+
+            try {
+                color.name;
+                return color;
+            } catch (e1) {}
+
+            return doc.colors.add({
+                name: colorName,
+                model: ColorModel.PROCESS,
+                space: ColorSpace.RGB,
+                colorValue: rgb,
+            });
+        }
+
+        function hashText(text) {
+            var hash = 0;
+            for (var i = 0; i < text.length; i++) {
+                hash = (hash * 31 + text.charCodeAt(i)) % 9973;
+            }
+            return hash;
+        }
+
+        function fallbackRgbForTag(tagText) {
+            var hash = hashText(tagText);
+            return [
+                160 + (hash % 60),
+                160 + ((hash * 7) % 60),
+                160 + ((hash * 13) % 60),
+            ];
+        }
+
+        function rgbForTag(tagText) {
+            if (TAG_COLOR_MAP[tagText]) return TAG_COLOR_MAP[tagText];
+            return fallbackRgbForTag(tagText);
+        }
+
+        function colorNameForTag(tagText) {
+            return String(tagText).replace(/[^A-Za-z0-9_]+/g, "_");
+        }
+
+        function applyTagBackground(textFrame, tagText) {
+            var rgb = rgbForTag(tagText);
+            var color = getOrCreateRgbColor(colorNameForTag(tagText), rgb);
+            textFrame.fillColor = color;
+            try {
+                textFrame.fillTint = 100;
+            } catch (e) {}
         }
 
         function moveToTopLeft(item, left, top) {
@@ -447,6 +532,7 @@
                     }
 
                     duplicateTextFrame.contents = tagText;
+                    applyTagBackground(duplicateTextFrame, tagText);
                     setGeneratedLabel(
                         duplicateItem,
                         entryIndex + 1,
@@ -505,7 +591,13 @@
             );
         }
 
-        main();
+        app.doScript(
+            main,
+            ScriptLanguage.JAVASCRIPT,
+            undefined,
+            UndoModes.ENTIRE_SCRIPT,
+            "根据 JSON tags 生成标签",
+        );
     } catch (error) {
         alert(
             "脚本执行失败：\n\n" +
