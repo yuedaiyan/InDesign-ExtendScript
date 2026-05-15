@@ -11,7 +11,8 @@
      - 每条 entry 生成一个复制文本框；
      - 不同 entry 从左到右排列；
      - weather 为 null / undefined 时，复制一个空文本框；
-     - weather 为字符串时，原样写入文本框，不裁剪空格或换行。
+     - weather 为对象时，合成为三行三列文本，每列之间用 tab 对齐；
+     - weather 为字符串时，原样写入文本框，兼容旧 JSON。
 */
 
 (function () {
@@ -376,9 +377,106 @@
             return removed;
         }
 
-        function normalizeWeatherText(value) {
-            if (value === null || value === undefined) return "";
-            return String(value);
+        function hasValue(value) {
+            return value !== null && value !== undefined && String(value) !== "";
+        }
+
+        function formatNumber(value, decimals) {
+            if (!hasValue(value)) return "n/a";
+
+            var numberValue = Number(value);
+            if (isNaN(numberValue)) return String(value);
+
+            return numberValue.toFixed(decimals);
+        }
+
+        function formatCoordinate(value, positiveSuffix, negativeSuffix) {
+            if (!hasValue(value)) return "n/a";
+
+            var numberValue = Number(value);
+            if (isNaN(numberValue)) return String(value);
+
+            var suffix = numberValue < 0 ? negativeSuffix : positiveSuffix;
+            return Math.abs(numberValue).toFixed(2) + "°" + suffix;
+        }
+
+        function formatTemperature(value) {
+            if (!hasValue(value)) return "T n/a";
+            return "T " + formatNumber(value, 1) + " °C";
+        }
+
+        function formatHumidity(value) {
+            if (!hasValue(value)) return "RH n/a";
+            return "RH " + formatNumber(value, 0) + "%";
+        }
+
+        function formatWind(weather) {
+            var direction = hasValue(weather.wind_direction)
+                ? String(weather.wind_direction)
+                : "n/a";
+            var speed = hasValue(weather.wind_speed_m_s)
+                ? formatNumber(weather.wind_speed_m_s, 1)
+                : "n/a";
+
+            return direction + " " + speed + " m·s⁻¹";
+        }
+
+        function formatVisibility(value) {
+            if (!hasValue(value)) return "Vis n/a";
+            return "Vis " + formatNumber(value, 1) + " km";
+        }
+
+        function formatCloud(weather) {
+            var cloudCover = hasValue(weather.cloud_cover_eighths)
+                ? String(weather.cloud_cover_eighths)
+                : "n/a";
+            var cloudType = hasValue(weather.cloud_type)
+                ? String(weather.cloud_type)
+                : "";
+
+            if (cloudType === "") return "Cloud " + cloudCover;
+            return "Cloud " + cloudCover + " " + cloudType;
+        }
+
+        function formatWeatherCode(value) {
+            if (!hasValue(value)) return "Wx n/a";
+            var text = String(value);
+            if (text.length === 1) text = "0" + text;
+            return "Wx " + text;
+        }
+
+        function normalizeWeatherText(weather) {
+            if (weather === null || weather === undefined) return "";
+            if (typeof weather !== "object") return String(weather);
+
+            var dateText = hasValue(weather.date) ? String(weather.date) : "n/a";
+            var timeText = hasValue(weather.local_time)
+                ? String(weather.local_time)
+                : "n/a";
+            var timezoneText = hasValue(weather.timezone)
+                ? String(weather.timezone)
+                : "";
+            var timeWithZone =
+                timezoneText === "" ? timeText : timeText + " " + timezoneText;
+
+            var coordinateText =
+                formatCoordinate(weather.latitude, "N", "S") +
+                " " +
+                formatCoordinate(weather.longitude, "E", "W");
+
+            return [
+                [dateText, timeWithZone, coordinateText].join("\t"),
+                [
+                    formatTemperature(weather.temperature_c),
+                    formatHumidity(weather.relative_humidity_percent),
+                    formatWind(weather)
+                ].join("\t"),
+                [
+                    formatVisibility(weather.visibility_km),
+                    formatCloud(weather),
+                    formatWeatherCode(weather.weather_code)
+                ].join("\t")
+            ].join("\r");
         }
 
         function setTextFrameContents(textFrames, text) {

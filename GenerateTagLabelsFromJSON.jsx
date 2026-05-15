@@ -8,7 +8,8 @@
   4. 脚本读取 JSON 中每条 diary entry 的 tags 字段：
      - 同一条 entry 的 tags 自下而上排列；
      - 不同 entry 从左到右排列；
-     - 每个生成标签复制模板，替换模板文字，并按 tag 设置文本框背景色。
+     - 每个生成标签复制模板，替换模板文字，并按 tag 设置文本框背景色；
+     - 同一条 entry 生成出的所有标签会自动编成一个组。
 */
 
 (function () {
@@ -374,6 +375,73 @@
             } catch (e) {}
         }
 
+        function setGeneratedEntryGroupLabel(item, entryIndex, entryId, count) {
+            try {
+                item.label =
+                    GENERATED_LABEL +
+                    "|entry_group=" +
+                    entryIndex +
+                    "|id=" +
+                    entryId +
+                    "|count=" +
+                    count;
+            } catch (e) {}
+        }
+
+        function groupPageItems(items, entryIndex, entryId) {
+            var validItems = [];
+
+            for (var i = 0; i < items.length; i++) {
+                if (isValidItem(items[i])) validItems.push(items[i]);
+            }
+
+            if (validItems.length === 0) return null;
+
+            if (validItems.length === 1) {
+                setGeneratedEntryGroupLabel(
+                    validItems[0],
+                    entryIndex,
+                    entryId,
+                    validItems.length
+                );
+                return validItems[0];
+            }
+
+            var group = null;
+
+            try {
+                group = doc.groups.add(validItems);
+            } catch (e1) {
+                try {
+                    var parentPage = validItems[0].parentPage;
+                    if (parentPage && parentPage.isValid) {
+                        group = parentPage.groups.add(validItems);
+                    }
+                } catch (e2) {}
+            }
+
+            if (!group) {
+                try {
+                    var parent = validItems[0].parent;
+                    if (parent && parent.groups) {
+                        group = parent.groups.add(validItems);
+                    }
+                } catch (e3) {}
+            }
+
+            if (!group) {
+                throw new Error(
+                    "第 " +
+                        entryIndex +
+                        " 条生成完成后自动编组失败。\n\n这一条生成对象数：" +
+                        validItems.length
+                );
+            }
+
+            setGeneratedEntryGroupLabel(group, entryIndex, entryId, validItems.length);
+            return group;
+        }
+
         function clearPreviousGenerated() {
             var removed = 0;
             for (var p = 0; p < doc.pages.length; p++) {
@@ -500,6 +568,7 @@
             }
 
             var generatedCount = 0;
+            var entryGroupCount = 0;
             var skippedEntries = 0;
 
             for (
@@ -509,6 +578,7 @@
             ) {
                 var tags = normalizeTags(entries[entryIndex].tags);
                 var entryId = entries[entryIndex].id;
+                var entryGeneratedItems = [];
 
                 if (tags.length === 0) {
                     skippedEntries++;
@@ -564,6 +634,12 @@
                     }
 
                     generatedCount++;
+                    entryGeneratedItems.push(duplicateItem);
+                }
+
+                if (entryGeneratedItems.length > 0) {
+                    groupPageItems(entryGeneratedItems, entryIndex + 1, entryId);
+                    entryGroupCount++;
                 }
             }
 
@@ -579,6 +655,8 @@
                     entries.length +
                     "\n生成标签数：" +
                     generatedCount +
+                    "\n生成 entry 组数：" +
+                    entryGroupCount +
                     "\n无 tags / 空 tags 条目：" +
                     skippedEntries +
                     "\n开始条目 id：" +
