@@ -1,0 +1,1621 @@
+var GraduationChapter2Auto = GraduationChapter2Auto || {};
+
+(function (G) {
+    G.CONFIG = {
+        entriesJsonFileName: "diary_entries.merged.json",
+        peopleIndexJsonFileName: "diary_people_index.json",
+        useTemplatePositionAsStart: true,
+        startX: 251.920083333333,
+        startY: 47.6730000000002,
+        tagYGap: 6.776,
+        entryXGap: 14.755,
+        maxEntries: 24,
+        showStartAlert: true,
+        clearPreviousGenerated: false,
+        keepTemplateVisible: true,
+        allGeneratedLabelBase: "generated_chapter2_auto_",
+        tagGeneratedLabel: "generated_json_tag_label_",
+        peopleGeneratedLabel: "generated_json_people_label_",
+        weatherGeneratedLabel: "generated_json_weather_text_"
+    };
+
+    G.TAG_COLOR_MAP = {
+        a1: [246, 169, 174],
+        a2: [238, 135, 145],
+        a3: [226, 103, 118],
+        a4: [207, 78, 96],
+        b1: [248, 187, 122],
+        b2: [239, 158, 91],
+        b3: [224, 132, 72],
+        b4: [202, 106, 58],
+        c1: [244, 215, 118],
+        c2: [230, 195, 87],
+        c3: [211, 172, 63],
+        c4: [188, 146, 48],
+        d1: [166, 209, 139],
+        d2: [135, 189, 118],
+        d3: [105, 164, 98],
+        d4: [79, 139, 83],
+        e1: [132, 204, 196],
+        e2: [101, 181, 180],
+        e3: [77, 154, 166],
+        e4: [62, 127, 148],
+        f1: [143, 173, 222],
+        f2: [121, 144, 208],
+        f3: [105, 116, 190],
+        f4: [91, 91, 164],
+        g1: [191, 183, 207],
+        g2: [164, 153, 187],
+        g3: [137, 124, 164],
+        g4: [113, 99, 141]
+    };
+
+    function errorText(error) {
+        var parts = [];
+
+        try {
+            if (error.message) parts.push(error.message);
+        } catch (e1) {}
+
+        try {
+            if (error.description) parts.push(error.description);
+        } catch (e2) {}
+
+        try {
+            if (parts.length === 0) parts.push(String(error));
+        } catch (e3) {
+            parts.push("未知错误");
+        }
+
+        try {
+            if (error.number) parts.push("错误编号：" + error.number);
+        } catch (e4) {}
+
+        return parts.join("\n");
+    }
+
+    function errorLine(error) {
+        try {
+            if (error.line) return error.line;
+        } catch (e1) {}
+
+        try {
+            if (error.lineNumber) return error.lineNumber;
+        } catch (e2) {}
+
+        return "未知";
+    }
+
+    function scriptFolderPath() {
+        return new File($.fileName).parent.fsName;
+    }
+
+    function readFile(path) {
+        var file = new File(path);
+        if (!file.exists) {
+            throw new Error("找不到 JSON 文件：\n" + path);
+        }
+        file.encoding = "UTF-8";
+        if (!file.open("r")) {
+            throw new Error("无法打开 JSON 文件：\n" + path);
+        }
+        var text = file.read();
+        file.close();
+        return text;
+    }
+
+    function parseJSON(text) {
+        if (typeof JSON !== "undefined" && JSON.parse) {
+            return JSON.parse(text);
+        }
+        return eval("(" + text + ")");
+    }
+
+    function extractEntries(data) {
+        if (data instanceof Array) return data;
+        if (data.entries instanceof Array) return data.entries;
+        if (data.data instanceof Array) return data.data;
+        if (data.diary_entries instanceof Array) return data.diary_entries;
+        throw new Error(
+            "JSON 结构无法识别：需要根结构是数组，或包含 entries / data / diary_entries 数组。"
+        );
+    }
+
+    function extractPeopleIndex(data) {
+        if (data instanceof Array) return data;
+        if (data.people instanceof Array) return data.people;
+        if (data.data instanceof Array) return data.data;
+        throw new Error(
+            "人物索引 JSON 结构无法识别：需要根结构是数组，或包含 people / data 数组。"
+        );
+    }
+
+    function loadEntries() {
+        var path = scriptFolderPath() + "/" + G.CONFIG.entriesJsonFileName;
+        return {
+            path: path,
+            entries: extractEntries(parseJSON(readFile(path)))
+        };
+    }
+
+    function loadPeopleIndex() {
+        var path = scriptFolderPath() + "/" + G.CONFIG.peopleIndexJsonFileName;
+        return {
+            path: path,
+            peopleIndex: extractPeopleIndex(parseJSON(readFile(path)))
+        };
+    }
+
+    function getTypeName(item) {
+        try {
+            if (item.typename) return item.typename;
+        } catch (e1) {}
+
+        try {
+            if (item.constructor && item.constructor.name) {
+                return item.constructor.name;
+            }
+        } catch (e2) {}
+
+        return "";
+    }
+
+    function isValidItem(item) {
+        try {
+            return item && item.isValid;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function removeItem(item) {
+        try {
+            if (isValidItem(item)) item.remove();
+        } catch (e) {}
+    }
+
+    function isTextFrame(item) {
+        if (!isValidItem(item)) return false;
+
+        try {
+            if (getTypeName(item) === "TextFrame") return true;
+        } catch (e1) {}
+
+        try {
+            if (item.constructor && String(item.constructor.name) === "TextFrame") {
+                return true;
+            }
+        } catch (e2) {}
+
+        return false;
+    }
+
+    function addTextFrame(result, seen, item) {
+        if (!isTextFrame(item)) return;
+
+        var key = "";
+        try {
+            key = String(item.id);
+        } catch (e1) {}
+
+        if (key === "") {
+            try {
+                key = String(item.toSpecifier());
+            } catch (e2) {}
+        }
+
+        if (key !== "") {
+            if (seen[key]) return;
+            seen[key] = true;
+        }
+
+        result.push(item);
+    }
+
+    function collectTextFrames(item, result, seen) {
+        if (!isValidItem(item)) return;
+        if (isTextFrame(item)) {
+            addTextFrame(result, seen, item);
+            return;
+        }
+
+        try {
+            if (item.textFrames && item.textFrames.length > 0) {
+                for (var t = 0; t < item.textFrames.length; t++) {
+                    addTextFrame(result, seen, item.textFrames[t]);
+                }
+            }
+        } catch (e1) {}
+
+        try {
+            if (item.allPageItems && item.allPageItems.length > 0) {
+                for (var a = 0; a < item.allPageItems.length; a++) {
+                    collectTextFrames(item.allPageItems[a], result, seen);
+                }
+            }
+        } catch (e2) {}
+
+        try {
+            if (item.groups && item.groups.length > 0) {
+                for (var g = 0; g < item.groups.length; g++) {
+                    collectTextFrames(item.groups[g], result, seen);
+                }
+            }
+        } catch (e3) {}
+
+        try {
+            if (item.pageItems && item.pageItems.length > 0) {
+                for (var p = 0; p < item.pageItems.length; p++) {
+                    collectTextFrames(item.pageItems[p], result, seen);
+                }
+            }
+        } catch (e4) {}
+    }
+
+    function getTextFrames(item) {
+        var result = [];
+        var seen = {};
+        collectTextFrames(item, result, seen);
+        return result;
+    }
+
+    function findTextFrame(item) {
+        var frames = getTextFrames(item);
+        if (frames.length > 0) return frames[0];
+        return null;
+    }
+
+    function getParentGroup(item) {
+        try {
+            var parent = item.parent;
+            while (parent && parent.isValid) {
+                if (getTypeName(parent) === "Group") return parent;
+                parent = parent.parent;
+            }
+        } catch (e) {}
+
+        return null;
+    }
+
+    function getTemplateItemFromSelection(allowTextFrame) {
+        if (app.selection.length === 0) return null;
+
+        var selected = app.selection[0];
+        if (!isValidItem(selected)) return null;
+
+        if (allowTextFrame && isTextFrame(selected)) return selected;
+        if (getTypeName(selected) === "Group") return selected;
+
+        var parentGroup = getParentGroup(selected);
+        if (parentGroup) return parentGroup;
+
+        return selected;
+    }
+
+    function getSelectedGroupOnly() {
+        if (app.selection.length === 0) return null;
+        var selected = app.selection[0];
+        if (!isValidItem(selected)) return null;
+        if (getTypeName(selected) === "Group") return selected;
+        return null;
+    }
+
+    function sortByTopThenLeft(a, b) {
+        var ab = a.geometricBounds;
+        var bb = b.geometricBounds;
+        if (ab[0] < bb[0]) return -1;
+        if (ab[0] > bb[0]) return 1;
+        if (ab[1] < bb[1]) return -1;
+        if (ab[1] > bb[1]) return 1;
+        return 0;
+    }
+
+    function itemKey(item) {
+        var key = "";
+        try {
+            key = "id:" + String(item.id);
+        } catch (e1) {}
+
+        if (key === "") {
+            try {
+                key = "spec:" + String(item.toSpecifier());
+            } catch (e2) {}
+        }
+
+        return key;
+    }
+
+    function sameItem(a, b) {
+        if (!isValidItem(a) || !isValidItem(b)) return false;
+
+        try {
+            if (a === b) return true;
+        } catch (e1) {}
+
+        try {
+            if (a.id !== undefined && b.id !== undefined && String(a.id) === String(b.id)) {
+                return true;
+            }
+        } catch (e2) {}
+
+        try {
+            if (String(a.toSpecifier()) === String(b.toSpecifier())) {
+                return true;
+            }
+        } catch (e3) {}
+
+        return false;
+    }
+
+    function isDirectChildOf(item, parentItem) {
+        try {
+            return sameItem(item.parent, parentItem);
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function getDirectChildPageItemsTopToBottom(group) {
+        var result = [];
+        var seen = {};
+
+        function addItem(item) {
+            if (!isValidItem(item)) return;
+            if (!isDirectChildOf(item, group)) return;
+
+            var key = itemKey(item);
+
+            if (key !== "") {
+                if (seen[key]) return;
+                seen[key] = true;
+            }
+
+            result.push(item);
+        }
+
+        try {
+            for (var g = 0; g < group.groups.length; g++) {
+                addItem(group.groups[g]);
+            }
+        } catch (e1) {}
+
+        try {
+            for (var t = 0; t < group.textFrames.length; t++) {
+                addItem(group.textFrames[t]);
+            }
+        } catch (e2) {}
+
+        result.sort(sortByTopThenLeft);
+        return result;
+    }
+
+    function describeChildItems(items) {
+        var lines = [];
+        for (var i = 0; i < items.length; i++) {
+            var item = items[i];
+            var bounds = null;
+            try {
+                bounds = item.geometricBounds;
+            } catch (e1) {}
+
+            var idText = "";
+            try {
+                idText = String(item.id);
+            } catch (e2) {
+                idText = "unknown";
+            }
+
+            lines.push(
+                (i + 1) +
+                    ". type=" +
+                    getTypeName(item) +
+                    ", id=" +
+                    idText +
+                    ", top=" +
+                    (bounds ? Number(bounds[0]).toFixed(3) : "n/a") +
+                    ", left=" +
+                    (bounds ? Number(bounds[1]).toFixed(3) : "n/a")
+            );
+        }
+        return lines.join("\n");
+    }
+
+    function childStructureHint(childItems) {
+        return "\n\n当前识别到的直接子对象（已按 top 从小到大排序）：\n" + describeChildItems(childItems);
+    }
+
+    function askGeneratedLabel(defaultLabel) {
+        var value = prompt(
+            "请输入本次生成对象要使用的标签。\n\n" +
+                "下次如果开启 CLEAR_PREVIOUS_GENERATED，会按这个标签清理旧对象。",
+            defaultLabel
+        );
+
+        if (value === null) return null;
+
+        value = String(value).replace(/^\s+|\s+$/g, "");
+        if (value === "") {
+            alert("标签不能为空。脚本已取消。");
+            return null;
+        }
+
+        return value;
+    }
+
+    function askGeneratedLabelBase() {
+        var value = prompt(
+            "请输入本次总生成对象要使用的标签前缀。\n\n" +
+                "总脚本会自动追加 event_ / people_ / weather_，用于分别标记三类生成对象。",
+            G.CONFIG.allGeneratedLabelBase
+        );
+
+        if (value === null) return null;
+
+        value = String(value).replace(/^\s+|\s+$/g, "");
+        if (value === "") {
+            alert("标签前缀不能为空。脚本已取消。");
+            return null;
+        }
+
+        return value;
+    }
+
+    function askStartEntryId(entries) {
+        var defaultId = "";
+
+        if (
+            entries.length > 0 &&
+            entries[0].id !== undefined &&
+            entries[0].id !== null
+        ) {
+            defaultId = String(entries[0].id);
+        }
+
+        var value = prompt(
+            "请输入本次开始生成的 JSON 条目 id。\n\n" +
+                "脚本会从匹配到的这个 id 开始，按 JSON 顺序继续往后生成。",
+            defaultId
+        );
+
+        if (value === null) return null;
+
+        value = String(value).replace(/^\s+|\s+$/g, "");
+        if (value === "") {
+            alert("开始条目 id 不能为空。脚本已取消。");
+            return null;
+        }
+
+        return value;
+    }
+
+    function findEntryIndexById(entries, idText) {
+        for (var i = 0; i < entries.length; i++) {
+            try {
+                if (String(entries[i].id) === idText) return i;
+            } catch (e) {}
+        }
+
+        return -1;
+    }
+
+    function sliceEntriesForRun(entries, startEntryId) {
+        var startEntryIndex = findEntryIndexById(entries, startEntryId);
+        if (startEntryIndex < 0) {
+            throw new Error(
+                "找不到 id 为 " +
+                    startEntryId +
+                    " 的 JSON 条目。\n\n请检查 JSON 里的 id 字段后再运行。"
+            );
+        }
+
+        entries = entries.slice(startEntryIndex);
+        if (G.CONFIG.maxEntries > 0 && entries.length > G.CONFIG.maxEntries) {
+            entries = entries.slice(0, G.CONFIG.maxEntries);
+        }
+        return entries;
+    }
+
+    function startPointForTemplate(templateItem) {
+        var templateBounds = templateItem.geometricBounds;
+        return {
+            x: G.CONFIG.useTemplatePositionAsStart
+                ? templateBounds[1]
+                : G.CONFIG.startX,
+            y: G.CONFIG.useTemplatePositionAsStart
+                ? templateBounds[0]
+                : G.CONFIG.startY
+        };
+    }
+
+    function moveToTopLeft(item, left, top) {
+        var bounds = item.geometricBounds;
+        var dx = left - bounds[1];
+        var dy = top - bounds[0];
+        item.move(undefined, [dx, dy]);
+    }
+
+    function setGeneratedEntryGroupLabel(item, generatedLabel, entryIndex, entryId, count) {
+        try {
+            item.label =
+                generatedLabel +
+                "|entry_group=" +
+                entryIndex +
+                "|id=" +
+                entryId +
+                "|count=" +
+                count;
+        } catch (e) {}
+    }
+
+    function groupPageItems(doc, items, generatedLabel, entryIndex, entryId) {
+        var validItems = [];
+
+        for (var i = 0; i < items.length; i++) {
+            if (isValidItem(items[i])) validItems.push(items[i]);
+        }
+
+        if (validItems.length === 0) return null;
+
+        if (validItems.length === 1) {
+            setGeneratedEntryGroupLabel(
+                validItems[0],
+                generatedLabel,
+                entryIndex,
+                entryId,
+                validItems.length
+            );
+            return validItems[0];
+        }
+
+        var group = null;
+
+        try {
+            group = doc.groups.add(validItems);
+        } catch (e1) {
+            try {
+                var parentPage = validItems[0].parentPage;
+                if (parentPage && parentPage.isValid) {
+                    group = parentPage.groups.add(validItems);
+                }
+            } catch (e2) {}
+        }
+
+        if (!group) {
+            try {
+                var parent = validItems[0].parent;
+                if (parent && parent.groups) {
+                    group = parent.groups.add(validItems);
+                }
+            } catch (e3) {}
+        }
+
+        if (!group) {
+            throw new Error(
+                "第 " +
+                    entryIndex +
+                    " 条生成完成后自动编组失败。\n\n这一条生成对象数：" +
+                    validItems.length
+            );
+        }
+
+        setGeneratedEntryGroupLabel(group, generatedLabel, entryIndex, entryId, validItems.length);
+        return group;
+    }
+
+    function clearPreviousGenerated(doc, generatedLabel) {
+        var removed = 0;
+        for (var p = 0; p < doc.pages.length; p++) {
+            var items;
+            try {
+                items = doc.pages[p].pageItems;
+            } catch (e1) {
+                continue;
+            }
+
+            for (var i = items.length - 1; i >= 0; i--) {
+                var item = items[i];
+                try {
+                    if (
+                        item.label &&
+                        String(item.label).indexOf(generatedLabel) === 0
+                    ) {
+                        item.remove();
+                        removed++;
+                    }
+                } catch (e2) {}
+            }
+        }
+        return removed;
+    }
+
+    function normalizeText(value) {
+        if (value === null || value === undefined) return "";
+        return String(value).replace(/^\s+|\s+$/g, "");
+    }
+
+    function normalizeTags(tags) {
+        if (!(tags instanceof Array)) return [];
+
+        var result = [];
+        for (var i = 0; i < tags.length; i++) {
+            var text = normalizeText(tags[i]);
+            if (text !== "") result.push(text);
+        }
+        return result;
+    }
+
+    function normalizePeopleTags(peopleTags) {
+        if (!(peopleTags instanceof Array)) return [];
+
+        var result = [];
+        for (var i = 0; i < peopleTags.length; i++) {
+            var text = normalizeText(peopleTags[i]);
+            if (text !== "") result.push(text);
+        }
+        return result;
+    }
+
+    function buildPeopleLabelMap(peopleIndex) {
+        var map = {};
+        var duplicateNames = [];
+
+        for (var i = 0; i < peopleIndex.length; i++) {
+            var person = peopleIndex[i];
+            var name = normalizeText(person.original_name);
+            var label = normalizeText(person.label);
+
+            if (name === "" || label === "") continue;
+
+            if (map[name] !== undefined && map[name] !== label) {
+                duplicateNames.push(name);
+                continue;
+            }
+
+            map[name] = label;
+        }
+
+        if (duplicateNames.length > 0) {
+            alert(
+                "人物索引里有重复人名且 label 不一致，脚本会使用第一次出现的 label。\n\n" +
+                    duplicateNames.slice(0, 20).join("\n")
+            );
+        }
+
+        return map;
+    }
+
+    function setTextFrameContents(textFrames, text) {
+        for (var i = 0; i < textFrames.length; i++) {
+            try {
+                textFrames[i].contents = text;
+            } catch (e) {}
+        }
+    }
+
+    function addUniqueText(list, seen, text) {
+        if (seen[text]) return;
+        seen[text] = true;
+        list.push(text);
+    }
+
+    function getOrCreateRgbColor(doc, name, rgb) {
+        var colorName =
+            "tag_bg_" + name + "_" + rgb[0] + "_" + rgb[1] + "_" + rgb[2];
+        var color = doc.colors.itemByName(colorName);
+
+        try {
+            color.name;
+            return color;
+        } catch (e1) {}
+
+        return doc.colors.add({
+            name: colorName,
+            model: ColorModel.PROCESS,
+            space: ColorSpace.RGB,
+            colorValue: rgb
+        });
+    }
+
+    function hashText(text) {
+        var hash = 0;
+        for (var i = 0; i < text.length; i++) {
+            hash = (hash * 31 + text.charCodeAt(i)) % 9973;
+        }
+        return hash;
+    }
+
+    function fallbackRgbForTag(tagText) {
+        var hash = hashText(tagText);
+        return [
+            160 + (hash % 60),
+            160 + ((hash * 7) % 60),
+            160 + ((hash * 13) % 60)
+        ];
+    }
+
+    function rgbForTag(tagText) {
+        if (G.TAG_COLOR_MAP[tagText]) return G.TAG_COLOR_MAP[tagText];
+        return fallbackRgbForTag(tagText);
+    }
+
+    function colorNameForTag(tagText) {
+        return String(tagText).replace(/[^A-Za-z0-9_]+/g, "_");
+    }
+
+    function applyTagBackground(doc, textFrame, tagText) {
+        var rgb = rgbForTag(tagText);
+        var color = getOrCreateRgbColor(doc, colorNameForTag(tagText), rgb);
+        textFrame.fillColor = color;
+        try {
+            textFrame.fillTint = 100;
+        } catch (e) {}
+    }
+
+    function hasValue(value) {
+        return value !== null && value !== undefined && String(value) !== "";
+    }
+
+    function formatNumber(value, decimals) {
+        if (!hasValue(value)) return "n/a";
+
+        var numberValue = Number(value);
+        if (isNaN(numberValue)) return String(value);
+
+        return numberValue.toFixed(decimals);
+    }
+
+    function formatCoordinate(value, positiveSuffix, negativeSuffix) {
+        if (!hasValue(value)) return "n/a";
+
+        var numberValue = Number(value);
+        if (isNaN(numberValue)) return String(value);
+
+        var suffix = numberValue < 0 ? negativeSuffix : positiveSuffix;
+        return Math.abs(numberValue).toFixed(2) + "°" + suffix;
+    }
+
+    function formatTemperature(value) {
+        if (!hasValue(value)) return "T n/a";
+        return "T " + formatNumber(value, 1) + " °C";
+    }
+
+    function formatHumidity(value) {
+        if (!hasValue(value)) return "RH n/a";
+        return "RH " + formatNumber(value, 0) + "%";
+    }
+
+    function formatWind(weather) {
+        var direction = hasValue(weather.wind_direction)
+            ? String(weather.wind_direction)
+            : "n/a";
+        var speed = hasValue(weather.wind_speed_m_s)
+            ? formatNumber(weather.wind_speed_m_s, 1)
+            : "n/a";
+
+        return direction + " " + speed + " m·s⁻¹";
+    }
+
+    function formatVisibility(value) {
+        if (!hasValue(value)) return "Vis n/a";
+        return "Vis " + formatNumber(value, 1) + " km";
+    }
+
+    function formatCloud(weather) {
+        var cloudCover = hasValue(weather.cloud_cover_eighths)
+            ? String(weather.cloud_cover_eighths)
+            : "n/a";
+        var cloudType = hasValue(weather.cloud_type)
+            ? String(weather.cloud_type)
+            : "";
+
+        if (cloudType === "") return "Cloud " + cloudCover;
+        return "Cloud " + cloudCover + " " + cloudType;
+    }
+
+    function formatWeatherCode(value) {
+        if (!hasValue(value)) return "Wx n/a";
+        var text = String(value);
+        if (text.length === 1) text = "0" + text;
+        return "Wx " + text;
+    }
+
+    function normalizeWeatherText(weather) {
+        if (weather === null || weather === undefined) return "";
+        if (typeof weather !== "object") return String(weather);
+
+        var dateText = hasValue(weather.date) ? String(weather.date) : "n/a";
+        var timeText = hasValue(weather.local_time)
+            ? String(weather.local_time)
+            : "n/a";
+        var timezoneText = hasValue(weather.timezone)
+            ? String(weather.timezone)
+            : "";
+        var timeWithZone =
+            timezoneText === "" ? timeText : timeText + " " + timezoneText;
+
+        var coordinateText =
+            formatCoordinate(weather.latitude, "N", "S") +
+            " " +
+            formatCoordinate(weather.longitude, "E", "W");
+
+        return [
+            [dateText, timeWithZone, coordinateText].join("\t"),
+            [
+                formatTemperature(weather.temperature_c),
+                formatHumidity(weather.relative_humidity_percent),
+                formatWind(weather)
+            ].join("\t"),
+            [
+                formatVisibility(weather.visibility_km),
+                formatCloud(weather),
+                formatWeatherCode(weather.weather_code)
+            ].join("\t")
+        ].join("\r");
+    }
+
+    function templateError(templateItem, requiredText) {
+        if (!templateItem) {
+            throw new Error("没有选中模板。\n\n" + requiredText);
+        }
+    }
+
+    function generateTags(options) {
+        var doc = options.doc;
+        var entries = options.entries;
+        var templateItem = options.templateItem;
+        var generatedLabel = options.generatedLabel;
+        var point = startPointForTemplate(templateItem);
+        var templateTextFrame = findTextFrame(templateItem);
+
+        if (!templateTextFrame) {
+            throw new Error(
+                "事件模板里找不到文本框。\n\n脚本需要找到一个文本框架，用来替换 tags 文字。"
+            );
+        }
+
+        var generatedCount = 0;
+        var entryGroupCount = 0;
+        var skippedEntries = 0;
+
+        for (var entryIndex = 0; entryIndex < entries.length; entryIndex++) {
+            var tags = normalizeTags(entries[entryIndex].tags);
+            var entryId = entries[entryIndex].id;
+            var entryGeneratedItems = [];
+
+            if (tags.length === 0) {
+                skippedEntries++;
+                continue;
+            }
+
+            for (var tagIndex = 0; tagIndex < tags.length; tagIndex++) {
+                var tagText = tags[tagIndex];
+                var duplicateItem = templateItem.duplicate();
+                var duplicateTextFrame = findTextFrame(duplicateItem);
+
+                if (!duplicateTextFrame) {
+                    removeItem(duplicateItem);
+                    throw new Error(
+                        "复制第 " +
+                            (entryIndex + 1) +
+                            " 条、第 " +
+                            (tagIndex + 1) +
+                            " 个事件标签后，找不到可填充文字的文本框。"
+                    );
+                }
+
+                duplicateTextFrame.contents = tagText;
+                applyTagBackground(doc, duplicateTextFrame, tagText);
+                try {
+                    duplicateItem.label =
+                        generatedLabel +
+                        "|entry=" +
+                        (entryIndex + 1) +
+                        "|id=" +
+                        entryId +
+                        "|tag=" +
+                        (tagIndex + 1) +
+                        "|text=" +
+                        tagText;
+                } catch (e) {}
+
+                try {
+                    moveToTopLeft(
+                        duplicateItem,
+                        point.x + entryIndex * G.CONFIG.entryXGap,
+                        point.y - tagIndex * G.CONFIG.tagYGap
+                    );
+                } catch (moveError) {
+                    removeItem(duplicateItem);
+                    throw new Error(
+                        "移动第 " +
+                            (entryIndex + 1) +
+                            " 条、第 " +
+                            (tagIndex + 1) +
+                            " 个事件标签失败。\n\n目标位置：x=" +
+                            (point.x + entryIndex * G.CONFIG.entryXGap).toFixed(2) +
+                            ", y=" +
+                            (point.y - tagIndex * G.CONFIG.tagYGap).toFixed(2) +
+                            "\n\nInDesign 原始错误：\n" +
+                            moveError.message
+                    );
+                }
+
+                generatedCount++;
+                entryGeneratedItems.push(duplicateItem);
+            }
+
+            if (entryGeneratedItems.length > 0) {
+                groupPageItems(doc, entryGeneratedItems, generatedLabel, entryIndex + 1, entryId);
+                entryGroupCount++;
+            }
+        }
+
+        if (!G.CONFIG.keepTemplateVisible) {
+            try {
+                templateItem.visible = false;
+            } catch (e) {}
+        }
+
+        return {
+            generatedCount: generatedCount,
+            entryGroupCount: entryGroupCount,
+            skippedEntries: skippedEntries,
+            startX: point.x,
+            startY: point.y
+        };
+    }
+
+    function generatePeople(options) {
+        var doc = options.doc;
+        var entries = options.entries;
+        var templateItem = options.templateItem;
+        var generatedLabel = options.generatedLabel;
+        var peopleLabelMap = options.peopleLabelMap;
+        var point = startPointForTemplate(templateItem);
+        var templateTextFrames = getTextFrames(templateItem);
+
+        if (templateTextFrames.length === 0) {
+            throw new Error(
+                "人物/任务模板里找不到文本框。\n\n脚本只会修改复制组中的文本框文字，其他元素会被保留但不会被修改。"
+            );
+        }
+
+        var generatedCount = 0;
+        var entryGroupCount = 0;
+        var placeholderCount = 0;
+        var unknownPeople = [];
+        var unknownPeopleSeen = {};
+
+        for (var entryIndex = 0; entryIndex < entries.length; entryIndex++) {
+            var peopleTags = normalizePeopleTags(entries[entryIndex].people_tags);
+            var entryId = entries[entryIndex].id;
+            var entryGeneratedItems = [];
+
+            if (peopleTags.length === 0) {
+                var placeholderItem = templateItem.duplicate();
+                var placeholderTextFrames = getTextFrames(placeholderItem);
+
+                if (placeholderTextFrames.length === 0) {
+                    removeItem(placeholderItem);
+                    throw new Error(
+                        "复制第 " +
+                            (entryIndex + 1) +
+                            " 条空人物/任务标签占位后，找不到可填充文字的文本框。"
+                    );
+                }
+
+                setTextFrameContents(placeholderTextFrames, "");
+                try {
+                    placeholderItem.label =
+                        generatedLabel +
+                        "|entry=" +
+                        (entryIndex + 1) +
+                        "|id=" +
+                        entryId +
+                        "|person=0|name=|label=";
+                } catch (e1) {}
+
+                try {
+                    moveToTopLeft(
+                        placeholderItem,
+                        point.x + entryIndex * G.CONFIG.entryXGap,
+                        point.y
+                    );
+                } catch (placeholderMoveError) {
+                    removeItem(placeholderItem);
+                    throw new Error(
+                        "移动第 " +
+                            (entryIndex + 1) +
+                            " 条空人物/任务标签占位失败。\n\n目标位置：x=" +
+                            (point.x + entryIndex * G.CONFIG.entryXGap).toFixed(2) +
+                            ", y=" +
+                            point.y.toFixed(2) +
+                            "\n\nInDesign 原始错误：\n" +
+                            placeholderMoveError.message
+                    );
+                }
+
+                generatedCount++;
+                placeholderCount++;
+                entryGeneratedItems.push(placeholderItem);
+                groupPageItems(doc, entryGeneratedItems, generatedLabel, entryIndex + 1, entryId);
+                entryGroupCount++;
+                continue;
+            }
+
+            var visiblePersonIndex = 0;
+            for (var personIndex = 0; personIndex < peopleTags.length; personIndex++) {
+                var personName = peopleTags[personIndex];
+                var personLabel = peopleLabelMap[personName];
+
+                if (personLabel === undefined) {
+                    addUniqueText(unknownPeople, unknownPeopleSeen, personName);
+                    continue;
+                }
+
+                var duplicateItem = templateItem.duplicate();
+                var duplicateTextFrames = getTextFrames(duplicateItem);
+
+                if (duplicateTextFrames.length === 0) {
+                    removeItem(duplicateItem);
+                    throw new Error(
+                        "复制第 " +
+                            (entryIndex + 1) +
+                            " 条、第 " +
+                            (personIndex + 1) +
+                            " 个人物/任务标签后，找不到可填充文字的文本框。"
+                    );
+                }
+
+                setTextFrameContents(duplicateTextFrames, personLabel);
+                try {
+                    duplicateItem.label =
+                        generatedLabel +
+                        "|entry=" +
+                        (entryIndex + 1) +
+                        "|id=" +
+                        entryId +
+                        "|person=" +
+                        (personIndex + 1) +
+                        "|name=" +
+                        personName +
+                        "|label=" +
+                        personLabel;
+                } catch (e2) {}
+
+                try {
+                    moveToTopLeft(
+                        duplicateItem,
+                        point.x + entryIndex * G.CONFIG.entryXGap,
+                        point.y - visiblePersonIndex * G.CONFIG.tagYGap
+                    );
+                } catch (moveError) {
+                    removeItem(duplicateItem);
+                    throw new Error(
+                        "移动第 " +
+                            (entryIndex + 1) +
+                            " 条、第 " +
+                            (personIndex + 1) +
+                            " 个人物/任务标签失败。\n\n目标位置：x=" +
+                            (point.x + entryIndex * G.CONFIG.entryXGap).toFixed(2) +
+                            ", y=" +
+                            (point.y - visiblePersonIndex * G.CONFIG.tagYGap).toFixed(2) +
+                            "\n\nInDesign 原始错误：\n" +
+                            moveError.message
+                    );
+                }
+
+                generatedCount++;
+                visiblePersonIndex++;
+                entryGeneratedItems.push(duplicateItem);
+            }
+
+            if (entryGeneratedItems.length > 0) {
+                groupPageItems(doc, entryGeneratedItems, generatedLabel, entryIndex + 1, entryId);
+                entryGroupCount++;
+            }
+        }
+
+        if (!G.CONFIG.keepTemplateVisible) {
+            try {
+                templateItem.visible = false;
+            } catch (e3) {}
+        }
+
+        return {
+            generatedCount: generatedCount,
+            entryGroupCount: entryGroupCount,
+            placeholderCount: placeholderCount,
+            unknownPeople: unknownPeople,
+            startX: point.x,
+            startY: point.y,
+            templateTextFrameCount: templateTextFrames.length
+        };
+    }
+
+    function generateWeather(options) {
+        var doc = options.doc;
+        var entries = options.entries;
+        var templateItem = options.templateItem;
+        var generatedLabel = options.generatedLabel;
+        var point = startPointForTemplate(templateItem);
+        var templateTextFrames = getTextFrames(templateItem);
+
+        if (templateTextFrames.length === 0) {
+            throw new Error(
+                "天气模板里找不到文本框。\n\n请直接选中一个文本框，或选中包含文本框的 Group。"
+            );
+        }
+
+        var generatedCount = 0;
+        var emptyWeatherCount = 0;
+
+        for (var entryIndex = 0; entryIndex < entries.length; entryIndex++) {
+            var entry = entries[entryIndex];
+            var entryId = entry.id;
+            var weatherText = normalizeWeatherText(entry.weather);
+
+            if (weatherText === "") {
+                emptyWeatherCount++;
+            }
+
+            var duplicateItem = templateItem.duplicate();
+            var duplicateTextFrames = getTextFrames(duplicateItem);
+
+            if (duplicateTextFrames.length === 0) {
+                removeItem(duplicateItem);
+                throw new Error(
+                    "复制第 " +
+                        (entryIndex + 1) +
+                        " 条天气文本框后，找不到可填充文字的文本框。"
+                );
+            }
+
+            setTextFrameContents(duplicateTextFrames, weatherText);
+            try {
+                duplicateItem.label =
+                    generatedLabel +
+                    "|entry=" +
+                    (entryIndex + 1) +
+                    "|id=" +
+                    entryId +
+                    "|weather_length=" +
+                    String(weatherText.length);
+            } catch (e) {}
+
+            try {
+                moveToTopLeft(
+                    duplicateItem,
+                    point.x + entryIndex * G.CONFIG.entryXGap,
+                    point.y
+                );
+            } catch (moveError) {
+                removeItem(duplicateItem);
+                throw new Error(
+                    "移动第 " +
+                        (entryIndex + 1) +
+                        " 条天气文本框失败。\n\n目标位置：x=" +
+                        (point.x + entryIndex * G.CONFIG.entryXGap).toFixed(2) +
+                        ", y=" +
+                        point.y.toFixed(2) +
+                        "\n\nInDesign 原始错误：\n" +
+                        moveError.message
+                );
+            }
+
+            generatedCount++;
+        }
+
+        if (!G.CONFIG.keepTemplateVisible) {
+            try {
+                templateItem.visible = false;
+            } catch (e2) {}
+        }
+
+        return {
+            generatedCount: generatedCount,
+            emptyWeatherCount: emptyWeatherCount,
+            startX: point.x,
+            startY: point.y,
+            templateTextFrameCount: templateTextFrames.length
+        };
+    }
+
+    function runInOneUndo(fn, undoName) {
+        if (app.documents.length === 0) {
+            alert("请先打开一个 InDesign 文档。");
+            return;
+        }
+
+        try {
+            app.doScript(
+                fn,
+                ScriptLanguage.JAVASCRIPT,
+                undefined,
+                UndoModes.ENTIRE_SCRIPT,
+                undoName
+            );
+        } catch (error) {
+            alert(
+                "脚本执行失败：\n\n" +
+                    errorText(error) +
+                    "\n\n行号：" +
+                    errorLine(error)
+            );
+        }
+    }
+
+    function standaloneStartAlert(kindName, entriesPath, peoplePath, entries, startEntryId, generatedLabel, point, templateFrameCount) {
+        if (!G.CONFIG.showStartAlert) return;
+
+        var text =
+            "脚本已启动。\n\n" +
+            "日记 JSON 文件：\n" +
+            entriesPath;
+
+        if (peoplePath) {
+            text += "\n\n人物索引 JSON 文件：\n" + peoplePath;
+        }
+
+        text +=
+            "\n\n生成类型：" +
+            kindName +
+            "\n将处理条目数：" +
+            entries.length +
+            "\n开始条目 id：" +
+            startEntryId +
+            "\n模板内文本框数：" +
+            templateFrameCount +
+            "\n\n生成起点：x=" +
+            point.x.toFixed(2) +
+            ", y=" +
+            point.y.toFixed(2) +
+            "\n\n生成对象标签：" +
+            generatedLabel +
+            "\n\n如果点击确定后没有生成，请把下一个报错弹窗发给我。";
+
+        alert(text);
+    }
+
+    function finishAlertForStandalone(kind, entries, startEntryId, generatedLabel, removedCount, result) {
+        if (kind === "tags") {
+            alert(
+                "事件标签生成完成。\n\n" +
+                    "JSON 条目数：" +
+                    entries.length +
+                    "\n生成标签数：" +
+                    result.generatedCount +
+                    "\n生成 entry 组数：" +
+                    result.entryGroupCount +
+                    "\n无 tags / 空 tags 条目：" +
+                    result.skippedEntries +
+                    "\n开始条目 id：" +
+                    startEntryId +
+                    "\n清理旧标签数：" +
+                    removedCount +
+                    "\n使用标签：" +
+                    generatedLabel
+            );
+            return;
+        }
+
+        if (kind === "people") {
+            var unknownMessage = "";
+            if (result.unknownPeople.length > 0) {
+                unknownMessage =
+                    "\n未在人物索引中找到的人名数：" +
+                    result.unknownPeople.length +
+                    "\n未找到的人名示例：\n" +
+                    result.unknownPeople.slice(0, 20).join("\n");
+            }
+
+            alert(
+                "人物/任务标签生成完成。\n\n" +
+                    "JSON 条目数：" +
+                    entries.length +
+                    "\n生成人物/任务标签数：" +
+                    result.generatedCount +
+                    "\n生成 entry 组数：" +
+                    result.entryGroupCount +
+                    "\n空 people_tags 占位数：" +
+                    result.placeholderCount +
+                    "\n开始条目 id：" +
+                    startEntryId +
+                    "\n清理旧标签数：" +
+                    removedCount +
+                    "\n使用标签：" +
+                    generatedLabel +
+                    unknownMessage
+            );
+            return;
+        }
+
+        alert(
+            "天气文本框生成完成。\n\n" +
+                "JSON 条目数：" +
+                entries.length +
+                "\n生成天气文本框数：" +
+                result.generatedCount +
+                "\n空 weather 文本框数：" +
+                result.emptyWeatherCount +
+                "\n开始条目 id：" +
+                startEntryId +
+                "\n清理旧标签数：" +
+                removedCount +
+                "\n使用标签：" +
+                generatedLabel
+        );
+    }
+
+    G.runStandalone = function (kind) {
+        runInOneUndo(function () {
+            var doc = app.activeDocument;
+            var allowTextFrame = kind === "weather";
+            var templateItem = getTemplateItemFromSelection(allowTextFrame);
+            templateError(
+                templateItem,
+                "请先选中对应模板 Group，或选中模板组里的文本框架，再运行脚本。"
+            );
+
+            var entriesBundle = loadEntries();
+            var peopleBundle = null;
+            var peopleLabelMap = null;
+            if (kind === "people") {
+                peopleBundle = loadPeopleIndex();
+                peopleLabelMap = buildPeopleLabelMap(peopleBundle.peopleIndex);
+            }
+
+            var defaultLabel =
+                kind === "tags"
+                    ? G.CONFIG.tagGeneratedLabel
+                    : kind === "people"
+                    ? G.CONFIG.peopleGeneratedLabel
+                    : G.CONFIG.weatherGeneratedLabel;
+            var generatedLabel = askGeneratedLabel(defaultLabel);
+            if (generatedLabel === null) return;
+
+            var startEntryId = askStartEntryId(entriesBundle.entries);
+            if (startEntryId === null) return;
+
+            var entries = sliceEntriesForRun(entriesBundle.entries, startEntryId);
+            var point = startPointForTemplate(templateItem);
+            standaloneStartAlert(
+                kind,
+                entriesBundle.path,
+                peopleBundle ? peopleBundle.path : null,
+                entries,
+                startEntryId,
+                generatedLabel,
+                point,
+                getTextFrames(templateItem).length
+            );
+
+            var removedCount = 0;
+            if (G.CONFIG.clearPreviousGenerated) {
+                removedCount = clearPreviousGenerated(doc, generatedLabel);
+            }
+
+            var result;
+            if (kind === "tags") {
+                result = generateTags({
+                    doc: doc,
+                    entries: entries,
+                    templateItem: templateItem,
+                    generatedLabel: generatedLabel
+                });
+            } else if (kind === "people") {
+                result = generatePeople({
+                    doc: doc,
+                    entries: entries,
+                    templateItem: templateItem,
+                    generatedLabel: generatedLabel,
+                    peopleLabelMap: peopleLabelMap
+                });
+            } else if (kind === "weather") {
+                result = generateWeather({
+                    doc: doc,
+                    entries: entries,
+                    templateItem: templateItem,
+                    generatedLabel: generatedLabel
+                });
+            } else {
+                throw new Error("未知子脚本类型：" + kind);
+            }
+
+            finishAlertForStandalone(kind, entries, startEntryId, generatedLabel, removedCount, result);
+        }, "根据 JSON 生成 " + kind);
+    };
+
+    G.runAll = function () {
+        runInOneUndo(function () {
+            var doc = app.activeDocument;
+            var bigGroup = getSelectedGroupOnly();
+
+            if (!bigGroup) {
+                alert(
+                    "没有选中大组。\n\n" +
+                        "请先选中一个大 Group。这个 Group 里需要自上到下包含：事件 Group / 人物或任务 Group / 天气文本框。"
+                );
+                return;
+            }
+
+            var childItems = getDirectChildPageItemsTopToBottom(bigGroup);
+            if (childItems.length < 3) {
+                alert(
+                    "选中的大组里没有找到 3 个直接子对象。\n\n" +
+                        "请确认大组内部自上到下至少包含：事件 Group / 人物或任务 Group / 天气文本框。当前找到：" +
+                        childItems.length +
+                        childStructureHint(childItems)
+                );
+                return;
+            }
+
+            var eventTemplate = childItems[0];
+            var peopleTemplate = childItems[1];
+            var weatherTemplate = childItems[2];
+
+            if (getTypeName(eventTemplate) !== "Group") {
+                alert(
+                    "大组内自上而下第 1 个直接子对象不是 Group。\n\n" +
+                        "这里的第 1 个指页面位置最高的直接子对象，也就是 top 数值最小的对象。\n\n" +
+                        "第 1 个应为事件 / tags 模板组。" +
+                        childStructureHint(childItems)
+                );
+                return;
+            }
+
+            if (getTypeName(peopleTemplate) !== "Group") {
+                alert(
+                    "大组内自上而下第 2 个直接子对象不是 Group。\n\n" +
+                        "第 2 个应为人物或任务 / people_tags 模板组。" +
+                        childStructureHint(childItems)
+                );
+                return;
+            }
+
+            if (!isTextFrame(weatherTemplate)) {
+                alert(
+                    "大组内自上而下第 3 个直接子对象不是文本框。\n\n" +
+                        "第 3 个应为天气 / weather 文本框模板。" +
+                        childStructureHint(childItems)
+                );
+                return;
+            }
+
+            var entriesBundle;
+            var peopleBundle;
+            try {
+                entriesBundle = loadEntries();
+                peopleBundle = loadPeopleIndex();
+            } catch (err) {
+                alert("读取 JSON 失败：\n\n" + errorText(err));
+                return;
+            }
+
+            var generatedLabelBase = askGeneratedLabelBase();
+            if (generatedLabelBase === null) return;
+
+            var startEntryId = askStartEntryId(entriesBundle.entries);
+            if (startEntryId === null) return;
+
+            var entries;
+            try {
+                entries = sliceEntriesForRun(entriesBundle.entries, startEntryId);
+            } catch (idError) {
+                alert(errorText(idError));
+                return;
+            }
+
+            var eventLabel = generatedLabelBase + "event_";
+            var peopleLabel = generatedLabelBase + "people_";
+            var weatherLabel = generatedLabelBase + "weather_";
+            var eventPoint = startPointForTemplate(eventTemplate);
+            var peoplePoint = startPointForTemplate(peopleTemplate);
+            var weatherPoint = startPointForTemplate(weatherTemplate);
+
+            if (G.CONFIG.showStartAlert) {
+                alert(
+                    "总脚本已启动。\n\n" +
+                        "大组内前三个直接子对象将按自上而下顺序解释为：\n" +
+                        "1. 事件 Group：读取 tags\n" +
+                        "2. 人物/任务 Group：读取 people_tags 并查人物索引\n" +
+                        "3. 天气文本框：读取 weather\n\n" +
+                        "日记 JSON 文件：\n" +
+                        entriesBundle.path +
+                        "\n\n人物索引 JSON 文件：\n" +
+                        peopleBundle.path +
+                        "\n\n将处理条目数：" +
+                        entries.length +
+                        "\n开始条目 id：" +
+                        startEntryId +
+                        "\n\n事件起点：x=" +
+                        eventPoint.x.toFixed(2) +
+                        ", y=" +
+                        eventPoint.y.toFixed(2) +
+                        "\n人物/任务起点：x=" +
+                        peoplePoint.x.toFixed(2) +
+                        ", y=" +
+                        peoplePoint.y.toFixed(2) +
+                        "\n天气起点：x=" +
+                        weatherPoint.x.toFixed(2) +
+                        ", y=" +
+                        weatherPoint.y.toFixed(2) +
+                        "\n\n标签前缀：" +
+                        generatedLabelBase
+                );
+            }
+
+            var removedEvent = 0;
+            var removedPeople = 0;
+            var removedWeather = 0;
+            if (G.CONFIG.clearPreviousGenerated) {
+                removedEvent = clearPreviousGenerated(doc, eventLabel);
+                removedPeople = clearPreviousGenerated(doc, peopleLabel);
+                removedWeather = clearPreviousGenerated(doc, weatherLabel);
+            }
+
+            var peopleLabelMap = buildPeopleLabelMap(peopleBundle.peopleIndex);
+            var eventResult = generateTags({
+                doc: doc,
+                entries: entries,
+                templateItem: eventTemplate,
+                generatedLabel: eventLabel
+            });
+            var peopleResult = generatePeople({
+                doc: doc,
+                entries: entries,
+                templateItem: peopleTemplate,
+                generatedLabel: peopleLabel,
+                peopleLabelMap: peopleLabelMap
+            });
+            var weatherResult = generateWeather({
+                doc: doc,
+                entries: entries,
+                templateItem: weatherTemplate,
+                generatedLabel: weatherLabel
+            });
+
+            var unknownMessage = "";
+            if (peopleResult.unknownPeople.length > 0) {
+                unknownMessage =
+                    "\n\n未在人物索引中找到的人名数：" +
+                    peopleResult.unknownPeople.length +
+                    "\n未找到的人名示例：\n" +
+                    peopleResult.unknownPeople.slice(0, 20).join("\n");
+            }
+
+            alert(
+                "总生成完成。\n\n" +
+                    "JSON 条目数：" +
+                    entries.length +
+                    "\n开始条目 id：" +
+                    startEntryId +
+                    "\n\n事件标签数：" +
+                    eventResult.generatedCount +
+                    "，entry 组数：" +
+                    eventResult.entryGroupCount +
+                    "，空 tags 条目：" +
+                    eventResult.skippedEntries +
+                    "\n人物/任务标签数：" +
+                    peopleResult.generatedCount +
+                    "，entry 组数：" +
+                    peopleResult.entryGroupCount +
+                    "，空占位：" +
+                    peopleResult.placeholderCount +
+                    "\n天气文本框数：" +
+                    weatherResult.generatedCount +
+                    "，空 weather：" +
+                    weatherResult.emptyWeatherCount +
+                    "\n\n清理旧对象数：" +
+                    (removedEvent + removedPeople + removedWeather) +
+                    "\n使用标签：\n" +
+                    eventLabel +
+                    "\n" +
+                    peopleLabel +
+                    "\n" +
+                    weatherLabel +
+                    unknownMessage
+            );
+        }, "根据 JSON 一次生成事件、人物/任务、天气");
+    };
+})(GraduationChapter2Auto);

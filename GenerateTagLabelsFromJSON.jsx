@@ -9,7 +9,9 @@
      - 同一条 entry 的 tags 自下而上排列；
      - 不同 entry 从左到右排列；
      - 每个生成标签复制模板，替换模板文字，并按 tag 设置文本框背景色；
-     - 同一条 entry 生成出的所有标签会自动编成一个组。
+     - 同一条 entry 生成出的所有标签会自动编成一个组；
+     - 所有 entry 组生成完成后，会统一向上对齐；
+     - 最后把本次生成的全部 entry 组编成一个大组，并移动到指定左上角坐标。
 */
 
 (function () {
@@ -80,6 +82,10 @@
         // 不同 diary entry 从左到右排列：每条 entry 往右移动 ENTRY_X_GAP。
         var ENTRY_X_GAP = 14.755;
 
+        // 前 12 条保持原间距；第 13 条开始整体向右额外移动这个距离。
+        var EXTRA_GAP_AFTER_ENTRY_COUNT = 12;
+        var EXTRA_GAP_AFTER_ENTRY_12 = 19.089;
+
         // 只生成前多少条。设为 0 或负数表示生成 JSON 里全部条目。
         var MAX_ENTRIES = 24;
 
@@ -92,6 +98,16 @@
 
         // true：模板保留在原地；false：生成完成后隐藏模板。
         var KEEP_TEMPLATE_VISIBLE = true;
+
+        // true：所有 entry 组生成完成后，统一按选区顶部向上对齐。
+        var ALIGN_ENTRY_GROUPS_TO_TOP = true;
+
+        // true：向上对齐后，把本次生成的所有 entry 组编成一个大组。
+        var GROUP_ALL_GENERATED_ENTRIES = true;
+
+        // 大组最终左上角位置。
+        var MASTER_GROUP_LEFT = 5.935;
+        var MASTER_GROUP_TOP = 8.342;
 
         // 给生成对象打的默认标签。运行脚本时会弹窗让你手动确认或修改。
         var DEFAULT_GENERATED_LABEL = "generated_json_tag_label_";
@@ -308,7 +324,7 @@
                 name: colorName,
                 model: ColorModel.PROCESS,
                 space: ColorSpace.RGB,
-                colorValue: rgb
+                colorValue: rgb,
             });
         }
 
@@ -354,6 +370,16 @@
             item.move(undefined, [dx, dy]);
         }
 
+        function entryXForIndex(startX, entryIndex) {
+            var x = startX + entryIndex * ENTRY_X_GAP;
+
+            if (entryIndex >= EXTRA_GAP_AFTER_ENTRY_COUNT) {
+                x += EXTRA_GAP_AFTER_ENTRY_12;
+            }
+
+            return x;
+        }
+
         function setGeneratedLabel(
             item,
             entryIndex,
@@ -388,6 +414,12 @@
             } catch (e) {}
         }
 
+        function setGeneratedMasterGroupLabel(item, count) {
+            try {
+                item.label = GENERATED_LABEL + "|master_group=1|count=" + count;
+            } catch (e) {}
+        }
+
         function groupPageItems(items, entryIndex, entryId) {
             var validItems = [];
 
@@ -402,7 +434,7 @@
                     validItems[0],
                     entryIndex,
                     entryId,
-                    validItems.length
+                    validItems.length,
                 );
                 return validItems[0];
             }
@@ -434,11 +466,103 @@
                     "第 " +
                         entryIndex +
                         " 条生成完成后自动编组失败。\n\n这一条生成对象数：" +
-                        validItems.length
+                        validItems.length,
                 );
             }
 
-            setGeneratedEntryGroupLabel(group, entryIndex, entryId, validItems.length);
+            setGeneratedEntryGroupLabel(
+                group,
+                entryIndex,
+                entryId,
+                validItems.length,
+            );
+            return group;
+        }
+
+        function alignItemsToTop(items) {
+            var validItems = [];
+            var top = null;
+
+            for (var i = 0; i < items.length; i++) {
+                if (!isValidItem(items[i])) continue;
+
+                try {
+                    var bounds = items[i].geometricBounds;
+                    validItems.push(items[i]);
+
+                    if (top === null || bounds[0] < top) {
+                        top = bounds[0];
+                    }
+                } catch (e1) {}
+            }
+
+            if (validItems.length < 2 || top === null) return validItems.length;
+
+            for (var j = 0; j < validItems.length; j++) {
+                try {
+                    var itemBounds = validItems[j].geometricBounds;
+                    validItems[j].move(undefined, [0, top - itemBounds[0]]);
+                } catch (e2) {
+                    throw new Error(
+                        "统一向上对齐第 " +
+                            (j + 1) +
+                            " 个 entry 组失败。\n\nInDesign 原始错误：\n" +
+                            e2.message,
+                    );
+                }
+            }
+
+            try {
+                app.select(validItems);
+            } catch (e3) {}
+
+            return validItems.length;
+        }
+
+        function groupAllGeneratedEntries(items) {
+            var validItems = [];
+
+            for (var i = 0; i < items.length; i++) {
+                if (isValidItem(items[i])) validItems.push(items[i]);
+            }
+
+            if (validItems.length === 0) return null;
+
+            if (validItems.length === 1) {
+                setGeneratedMasterGroupLabel(validItems[0], validItems.length);
+                return validItems[0];
+            }
+
+            var group = null;
+
+            try {
+                group = doc.groups.add(validItems);
+            } catch (e1) {
+                try {
+                    var parentPage = validItems[0].parentPage;
+                    if (parentPage && parentPage.isValid) {
+                        group = parentPage.groups.add(validItems);
+                    }
+                } catch (e2) {}
+            }
+
+            if (!group) {
+                try {
+                    var parent = validItems[0].parent;
+                    if (parent && parent.groups) {
+                        group = parent.groups.add(validItems);
+                    }
+                } catch (e3) {}
+            }
+
+            if (!group) {
+                throw new Error(
+                    "本次生成对象的大组编组失败。\n\n待编组 entry 组数：" +
+                        validItems.length,
+                );
+            }
+
+            setGeneratedMasterGroupLabel(group, validItems.length);
             return group;
         }
 
@@ -570,6 +694,9 @@
             var generatedCount = 0;
             var entryGroupCount = 0;
             var skippedEntries = 0;
+            var generatedEntryGroups = [];
+            var alignedEntryGroupCount = 0;
+            var masterGroup = null;
 
             for (
                 var entryIndex = 0;
@@ -589,6 +716,7 @@
                     var tagText = tags[tagIndex];
                     var duplicateItem = templateItem.duplicate();
                     var duplicateTextFrame = findTextFrame(duplicateItem);
+                    var entryX = entryXForIndex(startX, entryIndex);
 
                     if (!duplicateTextFrame) {
                         removeItem(duplicateItem);
@@ -614,7 +742,7 @@
                     try {
                         moveToTopLeft(
                             duplicateItem,
-                            startX + entryIndex * ENTRY_X_GAP,
+                            entryX,
                             startY - tagIndex * TAG_Y_GAP,
                         );
                     } catch (moveError) {
@@ -625,7 +753,7 @@
                                 " 条、第 " +
                                 (tagIndex + 1) +
                                 " 个标签失败。\n\n目标位置：x=" +
-                                (startX + entryIndex * ENTRY_X_GAP).toFixed(2) +
+                                entryX.toFixed(2) +
                                 ", y=" +
                                 (startY - tagIndex * TAG_Y_GAP).toFixed(2) +
                                 "\n\nInDesign 原始错误：\n" +
@@ -638,8 +766,33 @@
                 }
 
                 if (entryGeneratedItems.length > 0) {
-                    groupPageItems(entryGeneratedItems, entryIndex + 1, entryId);
+                    var entryGroup = groupPageItems(
+                        entryGeneratedItems,
+                        entryIndex + 1,
+                        entryId,
+                    );
+                    if (entryGroup) generatedEntryGroups.push(entryGroup);
                     entryGroupCount++;
+                }
+            }
+
+            if (ALIGN_ENTRY_GROUPS_TO_TOP) {
+                alignedEntryGroupCount = alignItemsToTop(generatedEntryGroups);
+            }
+
+            if (GROUP_ALL_GENERATED_ENTRIES) {
+                masterGroup = groupAllGeneratedEntries(generatedEntryGroups);
+
+                if (masterGroup) {
+                    moveToTopLeft(
+                        masterGroup,
+                        MASTER_GROUP_LEFT,
+                        MASTER_GROUP_TOP,
+                    );
+
+                    try {
+                        app.select(masterGroup);
+                    } catch (e) {}
                 }
             }
 
@@ -657,6 +810,10 @@
                     generatedCount +
                     "\n生成 entry 组数：" +
                     entryGroupCount +
+                    "\n向上对齐 entry 组数：" +
+                    alignedEntryGroupCount +
+                    "\n已生成大组：" +
+                    (masterGroup ? "是" : "否") +
                     "\n无 tags / 空 tags 条目：" +
                     skippedEntries +
                     "\n开始条目 id：" +
@@ -665,7 +822,7 @@
                     removedCount +
                     "\n使用标签：" +
                     GENERATED_LABEL +
-                    "\n\n如果位置不合适，请调整脚本顶部的 START_X / START_Y / TAG_Y_GAP / ENTRY_X_GAP。",
+                    "\n\n如果位置不合适，请调整脚本顶部的 START_X / START_Y / TAG_Y_GAP / ENTRY_X_GAP / MASTER_GROUP_LEFT / MASTER_GROUP_TOP。",
             );
         }
 
