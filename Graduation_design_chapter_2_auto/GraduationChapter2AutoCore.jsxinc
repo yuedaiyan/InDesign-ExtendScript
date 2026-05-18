@@ -1,6 +1,8 @@
-var GraduationChapter2Auto = GraduationChapter2Auto || {};
+﻿var GraduationChapter2Auto = GraduationChapter2Auto || {};
 
 (function (G) {
+    var CORE_FILE = new File($.fileName);
+
     G.CONFIG = {
         entriesJsonFileName: "diary_entries.merged.json",
         peopleIndexJsonFileName: "diary_people_index.json",
@@ -8,7 +10,15 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
         startX: 251.920083333333,
         startY: 47.6730000000002,
         tagYGap: 6.776,
+        tagXGap: 6.776,
+        tagsPerColumn: 10,
+        wrappedLabelGroupXOffset: 2.181,
         entryXGap: 14.755,
+        extraGapAfterEntryCount: 12,
+        extraGapAfterEntry12: 19.089,
+        allEntryGroupsXOffset: 3.154,
+        entriesPerPage: 24,
+        pageIndexStepPerBatch: 2,
         maxEntries: 24,
         showStartAlert: true,
         clearPreviousGenerated: false,
@@ -87,7 +97,21 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
     }
 
     function scriptFolderPath() {
-        return new File($.fileName).parent.fsName;
+        return CORE_FILE.parent.fsName;
+    }
+
+    function projectRootPath() {
+        return new File(scriptFolderPath()).parent.fsName;
+    }
+
+    function resolveDataFilePath(fileName) {
+        var scriptFolderFile = new File(scriptFolderPath() + "/" + fileName);
+        if (scriptFolderFile.exists) return scriptFolderFile.fsName;
+
+        var projectRootFile = new File(projectRootPath() + "/" + fileName);
+        if (projectRootFile.exists) return projectRootFile.fsName;
+
+        return projectRootFile.fsName;
     }
 
     function readFile(path) {
@@ -131,7 +155,7 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
     }
 
     function loadEntries() {
-        var path = scriptFolderPath() + "/" + G.CONFIG.entriesJsonFileName;
+        var path = resolveDataFilePath(G.CONFIG.entriesJsonFileName);
         return {
             path: path,
             entries: extractEntries(parseJSON(readFile(path)))
@@ -139,7 +163,7 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
     }
 
     function loadPeopleIndex() {
-        var path = scriptFolderPath() + "/" + G.CONFIG.peopleIndexJsonFileName;
+        var path = resolveDataFilePath(G.CONFIG.peopleIndexJsonFileName);
         return {
             path: path,
             peopleIndex: extractPeopleIndex(parseJSON(readFile(path)))
@@ -488,6 +512,39 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
         return value;
     }
 
+    function askRunScope() {
+        var value = prompt(
+            "请选择本次生成范围。\n\n" +
+                "1 = 只生成一跨页（最多 " +
+                G.CONFIG.entriesPerPage +
+                " 条，适合分批测试）\n" +
+                "2 = 生成整个 JSON 文件（从开始 id 一直生成到末尾）\n\n" +
+                "请输入 1 或 2。",
+            "1"
+        );
+
+        if (value === null) return null;
+
+        value = String(value).replace(/^\s+|\s+$/g, "");
+
+        if (value === "1") {
+            return {
+                pagesPerRun: 1,
+                description: "只生成一跨页"
+            };
+        }
+
+        if (value === "2") {
+            return {
+                pagesPerRun: 0,
+                description: "生成整个 JSON 文件"
+            };
+        }
+
+        alert("生成范围只能输入 1 或 2。脚本已取消。");
+        return null;
+    }
+
     function findEntryIndexById(entries, idText) {
         for (var i = 0; i < entries.length; i++) {
             try {
@@ -498,7 +555,7 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
         return -1;
     }
 
-    function sliceEntriesForRun(entries, startEntryId) {
+    function sliceEntriesForRun(entries, startEntryId, maxEntriesOverride) {
         var startEntryIndex = findEntryIndexById(entries, startEntryId);
         if (startEntryIndex < 0) {
             throw new Error(
@@ -509,8 +566,13 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
         }
 
         entries = entries.slice(startEntryIndex);
-        if (G.CONFIG.maxEntries > 0 && entries.length > G.CONFIG.maxEntries) {
-            entries = entries.slice(0, G.CONFIG.maxEntries);
+        var maxEntries =
+            maxEntriesOverride === undefined
+                ? G.CONFIG.maxEntries
+                : maxEntriesOverride;
+
+        if (maxEntries > 0 && entries.length > maxEntries) {
+            entries = entries.slice(0, maxEntries);
         }
         return entries;
     }
@@ -532,6 +594,167 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
         var dx = left - bounds[1];
         var dy = top - bounds[0];
         item.move(undefined, [dx, dy]);
+    }
+
+    function moveBottomTo(item, bottom) {
+        var bounds = item.geometricBounds;
+        var dy = bottom - bounds[2];
+        item.move(undefined, [0, dy]);
+    }
+
+    function moveLeftTo(item, left) {
+        var bounds = item.geometricBounds;
+        var dx = left - bounds[1];
+        item.move(undefined, [dx, 0]);
+    }
+
+    function moveBy(item, dx, dy) {
+        item.move(undefined, [dx, dy]);
+    }
+
+    function getParentPageForItem(item) {
+        if (!isValidItem(item)) return null;
+
+        try {
+            if (item.parentPage && item.parentPage.isValid) return item.parentPage;
+        } catch (e1) {}
+
+        try {
+            var parent = item.parent;
+            while (parent) {
+                if (getTypeName(parent) === "Page") return parent;
+                if (parent.parentPage && parent.parentPage.isValid) return parent.parentPage;
+                parent = parent.parent;
+            }
+        } catch (e2) {}
+
+        return null;
+    }
+
+    function getPageIndex(doc, page) {
+        for (var i = 0; i < doc.pages.length; i++) {
+            if (sameItem(doc.pages[i], page)) return i;
+        }
+        return -1;
+    }
+
+    function getPageBounds(page) {
+        try {
+            return page.bounds;
+        } catch (e) {
+            throw new Error("无法读取页面 bounds，请确认选中的模板组位于普通页面上。");
+        }
+    }
+
+    function getOrCreatePageAtIndex(doc, pageIndex) {
+        while (doc.pages.length <= pageIndex) {
+            doc.pages.add(LocationOptions.AFTER, doc.pages[doc.pages.length - 1]);
+        }
+        return doc.pages[pageIndex];
+    }
+
+    function duplicateItemForPage(templateItem, targetPage) {
+        if (!targetPage || !targetPage.isValid) {
+            return templateItem.duplicate();
+        }
+
+        var templatePage = getParentPageForItem(templateItem);
+        if (templatePage && sameItem(templatePage, targetPage)) {
+            return templateItem.duplicate();
+        }
+
+        try {
+            return templateItem.duplicate(targetPage);
+        } catch (duplicateError) {
+            throw new Error(
+                "复制模板到目标页面失败。\n\n目标页面：" +
+                    pageDisplayName(targetPage) +
+                    "\n\nInDesign 原始错误：\n" +
+                    duplicateError.message
+            );
+        }
+    }
+
+    function pageDisplayName(page) {
+        try {
+            return String(page.name);
+        } catch (e) {
+            return "unknown";
+        }
+    }
+
+    function entryXForIndex(startX, entryIndex) {
+        var x = startX + entryIndex * G.CONFIG.entryXGap;
+
+        if (entryIndex >= G.CONFIG.extraGapAfterEntryCount) {
+            x += G.CONFIG.extraGapAfterEntry12;
+        }
+
+        return x;
+    }
+
+    function tagsPerColumn() {
+        var value = Number(G.CONFIG.tagsPerColumn);
+        if (!value || value < 1) return 10;
+        return Math.floor(value);
+    }
+
+    function tagXGap() {
+        var value = Number(G.CONFIG.tagXGap);
+        if (!value) return G.CONFIG.tagYGap;
+        return value;
+    }
+
+    function wrappedLabelGroupXOffset() {
+        var value = Number(G.CONFIG.wrappedLabelGroupXOffset);
+        if (!value) return 0;
+        return value;
+    }
+
+    function shouldShiftWrappedLabelGroup(count) {
+        return count > tagsPerColumn();
+    }
+
+    function shiftWrappedLabelGroupLeft(item) {
+        var offset = wrappedLabelGroupXOffset();
+        if (offset !== 0) moveBy(item, -offset, 0);
+    }
+
+    function sequentialTagGridPosition(left, startY, visibleIndex, yDirection) {
+        var perColumn = tagsPerColumn();
+        var column = Math.floor(visibleIndex / perColumn);
+        var row = visibleIndex % perColumn;
+
+        return {
+            x: left + column * tagXGap(),
+            y: startY + yDirection * row * G.CONFIG.tagYGap
+        };
+    }
+
+    function bottomAlignedTagGridPosition(left, bottom, itemHeight, visibleIndex) {
+        var perColumn = tagsPerColumn();
+        var column = Math.floor(visibleIndex / perColumn);
+        var row = visibleIndex % perColumn;
+
+        return {
+            x: left + column * tagXGap(),
+            y: bottom - itemHeight - row * G.CONFIG.tagYGap
+        };
+    }
+
+    function eventTopAlignedReverseGridPosition(left, top, sourceIndex, totalCount) {
+        var perColumn = tagsPerColumn();
+        var column = Math.floor(sourceIndex / perColumn);
+        var indexInColumn = sourceIndex % perColumn;
+        var remainingCount = totalCount - column * perColumn;
+        var rowsInColumn = remainingCount < perColumn ? remainingCount : perColumn;
+        var rowFromTop =
+            (perColumn - rowsInColumn) + (rowsInColumn - 1 - indexInColumn);
+
+        return {
+            x: left + column * tagXGap(),
+            y: top + rowFromTop * G.CONFIG.tagYGap
+        };
     }
 
     function setGeneratedEntryGroupLabel(item, generatedLabel, entryIndex, entryId, count) {
@@ -864,6 +1087,7 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
         var entries = options.entries;
         var templateItem = options.templateItem;
         var generatedLabel = options.generatedLabel;
+        var yDirection = options.stackDirection === "down" ? 1 : -1;
         var point = startPointForTemplate(templateItem);
         var templateTextFrame = findTextFrame(templateItem);
 
@@ -889,6 +1113,12 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
 
             for (var tagIndex = 0; tagIndex < tags.length; tagIndex++) {
                 var tagText = tags[tagIndex];
+                var targetPoint = sequentialTagGridPosition(
+                    point.x + entryIndex * G.CONFIG.entryXGap,
+                    point.y,
+                    tagIndex,
+                    yDirection
+                );
                 var duplicateItem = templateItem.duplicate();
                 var duplicateTextFrame = findTextFrame(duplicateItem);
 
@@ -921,8 +1151,8 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
                 try {
                     moveToTopLeft(
                         duplicateItem,
-                        point.x + entryIndex * G.CONFIG.entryXGap,
-                        point.y - tagIndex * G.CONFIG.tagYGap
+                        targetPoint.x,
+                        targetPoint.y
                     );
                 } catch (moveError) {
                     removeItem(duplicateItem);
@@ -932,9 +1162,9 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
                             " 条、第 " +
                             (tagIndex + 1) +
                             " 个事件标签失败。\n\n目标位置：x=" +
-                            (point.x + entryIndex * G.CONFIG.entryXGap).toFixed(2) +
+                            targetPoint.x.toFixed(2) +
                             ", y=" +
-                            (point.y - tagIndex * G.CONFIG.tagYGap).toFixed(2) +
+                            targetPoint.y.toFixed(2) +
                             "\n\nInDesign 原始错误：\n" +
                             moveError.message
                     );
@@ -945,7 +1175,16 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
             }
 
             if (entryGeneratedItems.length > 0) {
-                groupPageItems(doc, entryGeneratedItems, generatedLabel, entryIndex + 1, entryId);
+                var entryGroup = groupPageItems(
+                    doc,
+                    entryGeneratedItems,
+                    generatedLabel,
+                    entryIndex + 1,
+                    entryId
+                );
+                if (entryGroup && shouldShiftWrappedLabelGroup(tags.length)) {
+                    shiftWrappedLabelGroupLeft(entryGroup);
+                }
                 entryGroupCount++;
             }
         }
@@ -971,6 +1210,8 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
         var templateItem = options.templateItem;
         var generatedLabel = options.generatedLabel;
         var peopleLabelMap = options.peopleLabelMap;
+        var yDirection = options.stackDirection === "down" ? 1 : -1;
+        var alignGroupBottomToStartY = options.alignGroupBottomToStartY === true;
         var point = startPointForTemplate(templateItem);
         var templateTextFrames = getTextFrames(templateItem);
 
@@ -983,6 +1224,7 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
         var generatedCount = 0;
         var entryGroupCount = 0;
         var placeholderCount = 0;
+        var skippedEmptyPeopleCount = 0;
         var unknownPeople = [];
         var unknownPeopleSeen = {};
 
@@ -992,54 +1234,7 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
             var entryGeneratedItems = [];
 
             if (peopleTags.length === 0) {
-                var placeholderItem = templateItem.duplicate();
-                var placeholderTextFrames = getTextFrames(placeholderItem);
-
-                if (placeholderTextFrames.length === 0) {
-                    removeItem(placeholderItem);
-                    throw new Error(
-                        "复制第 " +
-                            (entryIndex + 1) +
-                            " 条空人物/任务标签占位后，找不到可填充文字的文本框。"
-                    );
-                }
-
-                setTextFrameContents(placeholderTextFrames, "");
-                try {
-                    placeholderItem.label =
-                        generatedLabel +
-                        "|entry=" +
-                        (entryIndex + 1) +
-                        "|id=" +
-                        entryId +
-                        "|person=0|name=|label=";
-                } catch (e1) {}
-
-                try {
-                    moveToTopLeft(
-                        placeholderItem,
-                        point.x + entryIndex * G.CONFIG.entryXGap,
-                        point.y
-                    );
-                } catch (placeholderMoveError) {
-                    removeItem(placeholderItem);
-                    throw new Error(
-                        "移动第 " +
-                            (entryIndex + 1) +
-                            " 条空人物/任务标签占位失败。\n\n目标位置：x=" +
-                            (point.x + entryIndex * G.CONFIG.entryXGap).toFixed(2) +
-                            ", y=" +
-                            point.y.toFixed(2) +
-                            "\n\nInDesign 原始错误：\n" +
-                            placeholderMoveError.message
-                    );
-                }
-
-                generatedCount++;
-                placeholderCount++;
-                entryGeneratedItems.push(placeholderItem);
-                groupPageItems(doc, entryGeneratedItems, generatedLabel, entryIndex + 1, entryId);
-                entryGroupCount++;
+                skippedEmptyPeopleCount++;
                 continue;
             }
 
@@ -1053,6 +1248,12 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
                     continue;
                 }
 
+                var targetPoint = sequentialTagGridPosition(
+                    point.x + entryIndex * G.CONFIG.entryXGap,
+                    point.y,
+                    visiblePersonIndex,
+                    yDirection
+                );
                 var duplicateItem = templateItem.duplicate();
                 var duplicateTextFrames = getTextFrames(duplicateItem);
 
@@ -1086,8 +1287,8 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
                 try {
                     moveToTopLeft(
                         duplicateItem,
-                        point.x + entryIndex * G.CONFIG.entryXGap,
-                        point.y - visiblePersonIndex * G.CONFIG.tagYGap
+                        targetPoint.x,
+                        targetPoint.y
                     );
                 } catch (moveError) {
                     removeItem(duplicateItem);
@@ -1097,9 +1298,9 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
                             " 条、第 " +
                             (personIndex + 1) +
                             " 个人物/任务标签失败。\n\n目标位置：x=" +
-                            (point.x + entryIndex * G.CONFIG.entryXGap).toFixed(2) +
+                            targetPoint.x.toFixed(2) +
                             ", y=" +
-                            (point.y - visiblePersonIndex * G.CONFIG.tagYGap).toFixed(2) +
+                            targetPoint.y.toFixed(2) +
                             "\n\nInDesign 原始错误：\n" +
                             moveError.message
                     );
@@ -1111,7 +1312,27 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
             }
 
             if (entryGeneratedItems.length > 0) {
-                groupPageItems(doc, entryGeneratedItems, generatedLabel, entryIndex + 1, entryId);
+                var entryGroup = groupPageItems(doc, entryGeneratedItems, generatedLabel, entryIndex + 1, entryId);
+                if (alignGroupBottomToStartY && entryGroup) {
+                    try {
+                        moveBottomTo(entryGroup, point.y);
+                    } catch (alignError) {
+                        throw new Error(
+                            "对齐第 " +
+                                (entryIndex + 1) +
+                                " 条人物/任务标签组底部失败。\n\n目标 bottom y=" +
+                                point.y.toFixed(3) +
+                                "\n\nInDesign 原始错误：\n" +
+                                alignError.message
+                        );
+                    }
+                }
+                if (
+                    entryGroup &&
+                    shouldShiftWrappedLabelGroup(visiblePersonIndex)
+                ) {
+                    shiftWrappedLabelGroupLeft(entryGroup);
+                }
                 entryGroupCount++;
             }
         }
@@ -1126,6 +1347,7 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
             generatedCount: generatedCount,
             entryGroupCount: entryGroupCount,
             placeholderCount: placeholderCount,
+            skippedEmptyPeopleCount: skippedEmptyPeopleCount,
             unknownPeople: unknownPeople,
             startX: point.x,
             startY: point.y,
@@ -1218,6 +1440,401 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
             startX: point.x,
             startY: point.y,
             templateTextFrameCount: templateTextFrames.length
+        };
+    }
+
+    function generateEventBlockForEntry(options) {
+        var doc = options.doc;
+        var entry = options.entry;
+        var entryNumber = options.entryNumber;
+        var templateItem = options.templateItem;
+        var generatedLabel = options.generatedLabel;
+        var targetPage = options.targetPage;
+        var left = options.left;
+        var top = options.top;
+        var tags = normalizeTags(entry.tags);
+        var entryGeneratedItems = [];
+
+        if (tags.length === 0) {
+            return {
+                item: null,
+                generatedCount: 0,
+                skippedEntries: 1
+            };
+        }
+
+        for (var tagSourceIndex = 0; tagSourceIndex < tags.length; tagSourceIndex++) {
+            var tagText = tags[tagSourceIndex];
+            var targetPoint = eventTopAlignedReverseGridPosition(
+                left,
+                top,
+                tagSourceIndex,
+                tags.length
+            );
+            var duplicateItem = duplicateItemForPage(templateItem, targetPage);
+            var duplicateTextFrame = findTextFrame(duplicateItem);
+
+            if (!duplicateTextFrame) {
+                removeItem(duplicateItem);
+                throw new Error(
+                    "复制第 " +
+                        entryNumber +
+                        " 条、第 " +
+                        (tagSourceIndex + 1) +
+                        " 个事件标签后，找不到可填充文字的文本框。"
+                );
+            }
+
+            duplicateTextFrame.contents = tagText;
+            applyTagBackground(doc, duplicateTextFrame, tagText);
+            try {
+                duplicateItem.label =
+                    generatedLabel +
+                    "|entry=" +
+                    entryNumber +
+                    "|id=" +
+                    entry.id +
+                    "|tag=" +
+                    (tagSourceIndex + 1) +
+                    "|order=" +
+                    (tagSourceIndex + 1) +
+                    "|text=" +
+                    tagText;
+            } catch (e1) {}
+
+            try {
+                moveToTopLeft(duplicateItem, targetPoint.x, targetPoint.y);
+            } catch (moveError) {
+                removeItem(duplicateItem);
+                throw new Error(
+                    "移动第 " +
+                        entryNumber +
+                        " 条、第 " +
+                        (tagSourceIndex + 1) +
+                        " 个事件标签失败。\n\n目标位置：x=" +
+                        targetPoint.x.toFixed(2) +
+                        ", y=" +
+                        targetPoint.y.toFixed(2) +
+                        "\n\nInDesign 原始错误：\n" +
+                        moveError.message
+                );
+            }
+
+            entryGeneratedItems.push(duplicateItem);
+        }
+
+        var eventGroup = groupPageItems(
+            doc,
+            entryGeneratedItems,
+            generatedLabel,
+            entryNumber,
+            entry.id
+        );
+
+        if (eventGroup) {
+            moveToTopLeft(eventGroup, left, top);
+            if (shouldShiftWrappedLabelGroup(tags.length)) {
+                shiftWrappedLabelGroupLeft(eventGroup);
+            }
+        }
+
+        return {
+            item: eventGroup,
+            generatedCount: entryGeneratedItems.length,
+            skippedEntries: 0
+        };
+    }
+
+    function generatePeopleBlockForEntry(options) {
+        var doc = options.doc;
+        var entry = options.entry;
+        var entryNumber = options.entryNumber;
+        var templateItem = options.templateItem;
+        var generatedLabel = options.generatedLabel;
+        var targetPage = options.targetPage;
+        var peopleLabelMap = options.peopleLabelMap;
+        var left = options.left;
+        var bottom = options.bottom;
+        var templateBounds = templateItem.geometricBounds;
+        var templateHeight = templateBounds[2] - templateBounds[0];
+        var peopleTags = normalizePeopleTags(entry.people_tags);
+        var entryGeneratedItems = [];
+        var skippedEmptyPeopleCount = 0;
+        var unknownPeople = [];
+        var unknownPeopleSeen = {};
+
+        function addPeopleItem(personIndex, personName, personLabel, visibleIndex) {
+            var targetPoint = bottomAlignedTagGridPosition(
+                left,
+                bottom,
+                templateHeight,
+                visibleIndex
+            );
+            var duplicateItem = duplicateItemForPage(templateItem, targetPage);
+            var duplicateTextFrames = getTextFrames(duplicateItem);
+
+            if (duplicateTextFrames.length === 0) {
+                removeItem(duplicateItem);
+                throw new Error(
+                    "复制第 " +
+                        entryNumber +
+                        " 条、第 " +
+                        personIndex +
+                        " 个人物/任务标签后，找不到可填充文字的文本框。"
+                );
+            }
+
+            setTextFrameContents(duplicateTextFrames, personLabel);
+            try {
+                duplicateItem.label =
+                    generatedLabel +
+                    "|entry=" +
+                    entryNumber +
+                    "|id=" +
+                    entry.id +
+                    "|person=" +
+                    personIndex +
+                    "|name=" +
+                    personName +
+                    "|label=" +
+                    personLabel;
+            } catch (e1) {}
+
+            try {
+                moveToTopLeft(duplicateItem, targetPoint.x, targetPoint.y);
+            } catch (moveError) {
+                removeItem(duplicateItem);
+                throw new Error(
+                    "移动第 " +
+                        entryNumber +
+                        " 条、第 " +
+                        personIndex +
+                        " 个人物/任务标签失败。\n\n目标位置：x=" +
+                        targetPoint.x.toFixed(2) +
+                        ", y=" +
+                        targetPoint.y.toFixed(2) +
+                        "\n\nInDesign 原始错误：\n" +
+                        moveError.message
+                );
+            }
+
+            entryGeneratedItems.push(duplicateItem);
+        }
+
+        if (peopleTags.length === 0) {
+            skippedEmptyPeopleCount = 1;
+        } else {
+            var visiblePersonIndex = 0;
+            for (var personIndex = 0; personIndex < peopleTags.length; personIndex++) {
+                var personName = peopleTags[personIndex];
+                var personLabel = peopleLabelMap[personName];
+
+                if (personLabel === undefined) {
+                    addUniqueText(unknownPeople, unknownPeopleSeen, personName);
+                    continue;
+                }
+
+                addPeopleItem(
+                    personIndex + 1,
+                    personName,
+                    personLabel,
+                    visiblePersonIndex
+                );
+                visiblePersonIndex++;
+            }
+        }
+
+        if (entryGeneratedItems.length === 0) {
+            return {
+                item: null,
+                generatedCount: 0,
+                entryGroupCount: 0,
+                skippedEmptyPeopleCount: skippedEmptyPeopleCount,
+                unknownPeople: unknownPeople
+            };
+        }
+
+        var peopleGroup = groupPageItems(
+            doc,
+            entryGeneratedItems,
+            generatedLabel,
+            entryNumber,
+            entry.id
+        );
+
+        if (peopleGroup) {
+            moveBottomTo(peopleGroup, bottom);
+            moveLeftTo(peopleGroup, left);
+            if (shouldShiftWrappedLabelGroup(entryGeneratedItems.length)) {
+                shiftWrappedLabelGroupLeft(peopleGroup);
+            }
+        }
+
+        return {
+            item: peopleGroup,
+            generatedCount: entryGeneratedItems.length,
+            entryGroupCount: 1,
+            skippedEmptyPeopleCount: skippedEmptyPeopleCount,
+            unknownPeople: unknownPeople
+        };
+    }
+
+    function generateWeatherItemForEntry(options) {
+        var entry = options.entry;
+        var entryNumber = options.entryNumber;
+        var templateItem = options.templateItem;
+        var generatedLabel = options.generatedLabel;
+        var targetPage = options.targetPage;
+        var left = options.left;
+        var bottom = options.bottom;
+        var weatherText = normalizeWeatherText(entry.weather);
+        var templateBounds = templateItem.geometricBounds;
+        var templateHeight = templateBounds[2] - templateBounds[0];
+        var duplicateItem = duplicateItemForPage(templateItem, targetPage);
+        var duplicateTextFrames = getTextFrames(duplicateItem);
+
+        if (duplicateTextFrames.length === 0) {
+            removeItem(duplicateItem);
+            throw new Error(
+                "复制第 " +
+                    entryNumber +
+                    " 条天气文本框后，找不到可填充文字的文本框。"
+            );
+        }
+
+        setTextFrameContents(duplicateTextFrames, weatherText);
+        try {
+            duplicateItem.label =
+                generatedLabel +
+                "|entry=" +
+                entryNumber +
+                "|id=" +
+                entry.id +
+                "|weather_length=" +
+                String(weatherText.length);
+        } catch (e1) {}
+
+        try {
+            moveToTopLeft(duplicateItem, left, bottom - templateHeight);
+            moveBottomTo(duplicateItem, bottom);
+            moveLeftTo(duplicateItem, left);
+        } catch (moveError) {
+            removeItem(duplicateItem);
+            throw new Error(
+                "移动第 " +
+                    entryNumber +
+                    " 条天气文本框失败。\n\n目标 left=" +
+                    left.toFixed(2) +
+                    ", bottom=" +
+                    bottom.toFixed(2) +
+                    "\n\nInDesign 原始错误：\n" +
+                    moveError.message
+            );
+        }
+
+        return {
+            item: duplicateItem,
+            generatedCount: 1,
+            emptyWeatherCount: weatherText === "" ? 1 : 0
+        };
+    }
+
+    function generateCombinedEntryGroup(options) {
+        var doc = options.doc;
+        var entry = options.entry;
+        var entryNumber = options.entryNumber;
+        var entryIndex = options.entryIndex;
+        var eventTemplate = options.eventTemplate;
+        var peopleTemplate = options.peopleTemplate;
+        var weatherTemplate = options.weatherTemplate;
+        var targetPage = options.targetPage;
+        var eventLabel = options.eventLabel;
+        var peopleLabel = options.peopleLabel;
+        var weatherLabel = options.weatherLabel;
+        var entryLabel = options.entryLabel;
+        var peopleLabelMap = options.peopleLabelMap;
+        var alignLeft = options.alignLeft;
+        var finalLeft = options.finalLeft;
+        var eventTop = options.eventTop;
+        var peopleBottom = options.peopleBottom;
+        var weatherBottom = options.weatherBottom;
+        var entryItems = [];
+
+        var eventResult = generateEventBlockForEntry({
+            doc: doc,
+            entry: entry,
+            entryNumber: entryNumber,
+            templateItem: eventTemplate,
+            generatedLabel: eventLabel,
+            targetPage: targetPage,
+            left: alignLeft,
+            top: eventTop
+        });
+        if (eventResult.item) entryItems.push(eventResult.item);
+
+        var peopleResult = generatePeopleBlockForEntry({
+            doc: doc,
+            entry: entry,
+            entryNumber: entryNumber,
+            templateItem: peopleTemplate,
+            generatedLabel: peopleLabel,
+            targetPage: targetPage,
+            peopleLabelMap: peopleLabelMap,
+            left: alignLeft,
+            bottom: peopleBottom
+        });
+        if (peopleResult.item) entryItems.push(peopleResult.item);
+
+        var weatherResult = generateWeatherItemForEntry({
+            entry: entry,
+            entryNumber: entryNumber,
+            templateItem: weatherTemplate,
+            generatedLabel: weatherLabel,
+            targetPage: targetPage,
+            left: alignLeft,
+            bottom: weatherBottom
+        });
+        if (weatherResult.item) entryItems.push(weatherResult.item);
+
+        var shouldShiftLabelGroups =
+            shouldShiftWrappedLabelGroup(eventResult.generatedCount) ||
+            shouldShiftWrappedLabelGroup(peopleResult.generatedCount);
+        var labelGroupLeft = shouldShiftLabelGroups
+            ? alignLeft - wrappedLabelGroupXOffset()
+            : alignLeft;
+
+        for (var i = 0; i < entryItems.length; i++) {
+            if (sameItem(entryItems[i], eventResult.item)) {
+                moveLeftTo(entryItems[i], labelGroupLeft);
+            } else if (sameItem(entryItems[i], peopleResult.item)) {
+                moveLeftTo(entryItems[i], labelGroupLeft);
+            } else {
+                moveLeftTo(entryItems[i], alignLeft);
+            }
+        }
+
+        var entryGroup = groupPageItems(
+            doc,
+            entryItems,
+            entryLabel,
+            entryNumber,
+            entry.id
+        );
+
+        if (entryGroup) {
+            moveBy(entryGroup, finalLeft - alignLeft, 0);
+        }
+
+        return {
+            item: entryGroup,
+            eventGeneratedCount: eventResult.generatedCount,
+            eventSkippedEntries: eventResult.skippedEntries,
+            peopleGeneratedCount: peopleResult.generatedCount,
+            peopleEntryGroupCount: peopleResult.entryGroupCount,
+            peopleSkippedEmptyCount: peopleResult.skippedEmptyPeopleCount,
+            unknownPeople: peopleResult.unknownPeople,
+            weatherGeneratedCount: weatherResult.generatedCount,
+            weatherEmptyCount: weatherResult.emptyWeatherCount
         };
     }
 
@@ -1317,8 +1934,8 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
                     result.generatedCount +
                     "\n生成 entry 组数：" +
                     result.entryGroupCount +
-                    "\n空 people_tags 占位数：" +
-                    result.placeholderCount +
+                    "\n空 people_tags 跳过条目数：" +
+                    result.skippedEmptyPeopleCount +
                     "\n开始条目 id：" +
                     startEntryId +
                     "\n清理旧标签数：" +
@@ -1427,7 +2044,16 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
     };
 
     G.runAll = function () {
-        runInOneUndo(function () {
+        if (app.documents.length === 0) {
+            alert("请先打开一个 InDesign 文档。");
+            return;
+        }
+
+        var performancePrefsChanged = false;
+        var previousEnableRedraw = true;
+        var previousPreflightOff = false;
+
+        try {
             var doc = app.activeDocument;
             var bigGroup = getSelectedGroupOnly();
 
@@ -1482,6 +2108,26 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
                 return;
             }
 
+            var sourcePage =
+                getParentPageForItem(bigGroup) ||
+                getParentPageForItem(eventTemplate) ||
+                getParentPageForItem(peopleTemplate) ||
+                getParentPageForItem(weatherTemplate);
+
+            if (!sourcePage) {
+                alert(
+                    "无法识别选中大组所在页面。\n\n" +
+                        "请确认这个模板大组直接放在普通页面上，而不是主页、粘贴板或其他特殊容器中。"
+                );
+                return;
+            }
+
+            var sourcePageIndex = getPageIndex(doc, sourcePage);
+            if (sourcePageIndex < 0) {
+                alert("无法在当前文档中定位模板页。脚本已取消。");
+                return;
+            }
+
             var entriesBundle;
             var peopleBundle;
             try {
@@ -1492,26 +2138,90 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
                 return;
             }
 
+            var runScope = askRunScope();
+            if (runScope === null) return;
+
+            var pagesPerRun = runScope.pagesPerRun;
+            var runScopeDescription = runScope.description;
+
             var generatedLabelBase = askGeneratedLabelBase();
             if (generatedLabelBase === null) return;
 
             var startEntryId = askStartEntryId(entriesBundle.entries);
             if (startEntryId === null) return;
 
+            var startEntryIndex = findEntryIndexById(entriesBundle.entries, startEntryId);
+            if (startEntryIndex < 0) {
+                alert(
+                    "找不到 id 为 " +
+                        startEntryId +
+                        " 的 JSON 条目。\n\n请检查 JSON 里的 id 字段后再运行。"
+                );
+                return;
+            }
+
+            var entriesPerPage = G.CONFIG.entriesPerPage;
+            if (entriesPerPage <= 0) {
+                alert("entriesPerPage 必须大于 0。脚本已取消。");
+                return;
+            }
+
+            var pageIndexStepPerBatch = G.CONFIG.pageIndexStepPerBatch;
+            if (pageIndexStepPerBatch <= 0) {
+                alert("pageIndexStepPerBatch 必须大于 0。脚本已取消。");
+                return;
+            }
+
+            var startPageOffset = Math.floor(startEntryIndex / entriesPerPage);
+            var startEntryOffsetOnPage = startEntryIndex % entriesPerPage;
+            var maxEntriesForThisRun = 0;
+            if (pagesPerRun > 0) {
+                maxEntriesForThisRun =
+                    pagesPerRun * entriesPerPage - startEntryOffsetOnPage;
+            }
+
             var entries;
             try {
-                entries = sliceEntriesForRun(entriesBundle.entries, startEntryId);
+                entries = sliceEntriesForRun(
+                    entriesBundle.entries,
+                    startEntryId,
+                    maxEntriesForThisRun
+                );
             } catch (idError) {
                 alert(errorText(idError));
+                return;
+            }
+
+            if (entries.length === 0) {
+                alert("从这个开始 id 往后没有可生成的 JSON 条目。脚本已取消。");
                 return;
             }
 
             var eventLabel = generatedLabelBase + "event_";
             var peopleLabel = generatedLabelBase + "people_";
             var weatherLabel = generatedLabelBase + "weather_";
-            var eventPoint = startPointForTemplate(eventTemplate);
-            var peoplePoint = startPointForTemplate(peopleTemplate);
-            var weatherPoint = startPointForTemplate(weatherTemplate);
+            var entryLabel = generatedLabelBase + "entry_";
+            var lastEntryIndexForRun = startEntryIndex + entries.length - 1;
+            var lastPageOffset = Math.floor(lastEntryIndexForRun / entriesPerPage);
+            var pageCount = lastPageOffset - startPageOffset + 1;
+            var nextEntryIndex = lastEntryIndexForRun + 1;
+            var nextStartEntryId =
+                nextEntryIndex < entriesBundle.entries.length
+                    ? entriesBundle.entries[nextEntryIndex].id
+                    : null;
+            var sourcePageBounds = getPageBounds(sourcePage);
+            var eventBounds = eventTemplate.geometricBounds;
+            var peopleBounds = peopleTemplate.geometricBounds;
+            var weatherBounds = weatherTemplate.geometricBounds;
+            var bigGroupBounds = bigGroup.geometricBounds;
+            var alignLocalLeft = bigGroupBounds[1] - sourcePageBounds[1];
+            var eventLocalTop = eventBounds[0] - sourcePageBounds[0];
+            var peopleLocalBottom = peopleBounds[2] - sourcePageBounds[0];
+            var weatherLocalBottom = weatherBounds[2] - sourcePageBounds[0];
+            var firstPageAlignLeft = sourcePageBounds[1] + alignLocalLeft;
+            var firstPageEventTop = sourcePageBounds[0] + eventLocalTop;
+            var firstPagePeopleBottom = sourcePageBounds[0] + peopleLocalBottom;
+            var firstPageWeatherBottom = sourcePageBounds[0] + weatherLocalBottom;
 
             if (G.CONFIG.showStartAlert) {
                 alert(
@@ -1528,60 +2238,198 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
                         entries.length +
                         "\n开始条目 id：" +
                         startEntryId +
-                        "\n\n事件起点：x=" +
-                        eventPoint.x.toFixed(2) +
-                        ", y=" +
-                        eventPoint.y.toFixed(2) +
-                        "\n人物/任务起点：x=" +
-                        peoplePoint.x.toFixed(2) +
-                        ", y=" +
-                        peoplePoint.y.toFixed(2) +
-                        "\n天气起点：x=" +
-                        weatherPoint.x.toFixed(2) +
-                        ", y=" +
-                        weatherPoint.y.toFixed(2) +
+                        "\n每页条目数：" +
+                        entriesPerPage +
+                        "\n本次生成页数：" +
+                        pageCount +
+                        "\n文档页索引步长：" +
+                        pageIndexStepPerBatch +
+                        "（2 表示下一个跨页）" +
+                        "\n生成范围：" +
+                        runScopeDescription +
+                        "\n起始页面：" +
+                        pageDisplayName(sourcePage) +
+                        "\n本次目标跨页偏移：" +
+                        (startPageOffset + 1) +
+                        " - " +
+                        (lastPageOffset + 1) +
+                        (nextStartEntryId !== null
+                            ? "\n\n本次完成后，下次开始 id：\n" + nextStartEntryId
+                            : "\n\n本次会生成到 JSON 末尾。") +
+                        "\n\n纵向对齐：" +
+                        "\n事件组左上角 y=" +
+                        firstPageEventTop.toFixed(3) +
+                        "\n人物/任务组底部 y=" +
+                        firstPagePeopleBottom.toFixed(3) +
+                        "\n天气文本框底部 y=" +
+                        firstPageWeatherBottom.toFixed(3) +
+                        "\n\n条目组横向排列：" +
+                        "\n起始 left=" +
+                        firstPageAlignLeft.toFixed(3) +
+                        "\n横向间距=" +
+                        G.CONFIG.entryXGap +
+                        "\n第 " +
+                        (G.CONFIG.extraGapAfterEntryCount + 1) +
+                        " 条开始额外右移=" +
+                        G.CONFIG.extraGapAfterEntry12 +
+                        "\n所有条目组统一右移=" +
+                        G.CONFIG.allEntryGroupsXOffset +
                         "\n\n标签前缀：" +
                         generatedLabelBase
                 );
             }
 
+            try {
+                previousEnableRedraw = app.scriptPreferences.enableRedraw;
+            } catch (redrawReadError) {
+                previousEnableRedraw = true;
+            }
+
+            try {
+                previousPreflightOff = app.preflightOptions.preflightOff;
+            } catch (preflightReadError) {
+                previousPreflightOff = false;
+            }
+
+            performancePrefsChanged = true;
+
+            try {
+                app.scriptPreferences.enableRedraw = false;
+            } catch (redrawSetError) {}
+
+            try {
+                app.preflightOptions.preflightOff = true;
+            } catch (preflightSetError) {}
+
+            var removedEntry = 0;
             var removedEvent = 0;
             var removedPeople = 0;
             var removedWeather = 0;
             if (G.CONFIG.clearPreviousGenerated) {
+                removedEntry = clearPreviousGenerated(doc, entryLabel);
                 removedEvent = clearPreviousGenerated(doc, eventLabel);
                 removedPeople = clearPreviousGenerated(doc, peopleLabel);
                 removedWeather = clearPreviousGenerated(doc, weatherLabel);
             }
 
             var peopleLabelMap = buildPeopleLabelMap(peopleBundle.peopleIndex);
-            var eventResult = generateTags({
-                doc: doc,
-                entries: entries,
-                templateItem: eventTemplate,
-                generatedLabel: eventLabel
-            });
-            var peopleResult = generatePeople({
-                doc: doc,
-                entries: entries,
-                templateItem: peopleTemplate,
-                generatedLabel: peopleLabel,
-                peopleLabelMap: peopleLabelMap
-            });
-            var weatherResult = generateWeather({
-                doc: doc,
-                entries: entries,
-                templateItem: weatherTemplate,
-                generatedLabel: weatherLabel
-            });
+            var entryGroupCount = 0;
+            var eventGeneratedCount = 0;
+            var eventSkippedEntries = 0;
+            var peopleGeneratedCount = 0;
+            var peopleEntryGroupCount = 0;
+            var peopleSkippedEmptyCount = 0;
+            var weatherGeneratedCount = 0;
+            var weatherEmptyCount = 0;
+            var unknownPeople = [];
+            var unknownPeopleSeen = {};
+            var createdPageCount = 0;
+
+            for (
+                var pageOffset = startPageOffset;
+                pageOffset <= lastPageOffset;
+                pageOffset++
+            ) {
+                var currentPageOffset = pageOffset;
+
+                app.doScript(
+                    function () {
+                        var targetPageIndex =
+                            sourcePageIndex +
+                            currentPageOffset * pageIndexStepPerBatch;
+                        var pageCountBefore = doc.pages.length;
+                        var targetPage = getOrCreatePageAtIndex(doc, targetPageIndex);
+                        if (doc.pages.length > pageCountBefore) {
+                            createdPageCount += doc.pages.length - pageCountBefore;
+                        }
+
+                        var targetPageBounds = getPageBounds(targetPage);
+                        var pageAlignLeft = targetPageBounds[1] + alignLocalLeft;
+                        var pageEventTop = targetPageBounds[0] + eventLocalTop;
+                        var pagePeopleBottom =
+                            targetPageBounds[0] + peopleLocalBottom;
+                        var pageWeatherBottom =
+                            targetPageBounds[0] + weatherLocalBottom;
+                        var pageStartEntryIndex = Math.max(
+                            startEntryIndex,
+                            currentPageOffset * entriesPerPage
+                        );
+                        var pageEndEntryIndex = Math.min(
+                            (currentPageOffset + 1) * entriesPerPage,
+                            startEntryIndex + entries.length
+                        );
+
+                        for (
+                            var globalEntryIndex = pageStartEntryIndex;
+                            globalEntryIndex < pageEndEntryIndex;
+                            globalEntryIndex++
+                        ) {
+                            var pageEntryIndex =
+                                globalEntryIndex -
+                                currentPageOffset * entriesPerPage;
+                            var combinedResult = generateCombinedEntryGroup({
+                                doc: doc,
+                                entry: entries[globalEntryIndex - startEntryIndex],
+                                entryNumber: globalEntryIndex + 1,
+                                entryIndex: pageEntryIndex,
+                                eventTemplate: eventTemplate,
+                                peopleTemplate: peopleTemplate,
+                                weatherTemplate: weatherTemplate,
+                                targetPage: targetPage,
+                                eventLabel: eventLabel,
+                                peopleLabel: peopleLabel,
+                                weatherLabel: weatherLabel,
+                                entryLabel: entryLabel,
+                                peopleLabelMap: peopleLabelMap,
+                                alignLeft: pageAlignLeft,
+                                finalLeft:
+                                    entryXForIndex(pageAlignLeft, pageEntryIndex) +
+                                    G.CONFIG.allEntryGroupsXOffset,
+                                eventTop: pageEventTop,
+                                peopleBottom: pagePeopleBottom,
+                                weatherBottom: pageWeatherBottom
+                            });
+
+                            if (combinedResult.item) entryGroupCount++;
+                            eventGeneratedCount += combinedResult.eventGeneratedCount;
+                            eventSkippedEntries += combinedResult.eventSkippedEntries;
+                            peopleGeneratedCount +=
+                                combinedResult.peopleGeneratedCount;
+                            peopleEntryGroupCount +=
+                                combinedResult.peopleEntryGroupCount;
+                            peopleSkippedEmptyCount +=
+                                combinedResult.peopleSkippedEmptyCount;
+                            weatherGeneratedCount +=
+                                combinedResult.weatherGeneratedCount;
+                            weatherEmptyCount += combinedResult.weatherEmptyCount;
+
+                            for (
+                                var u = 0;
+                                u < combinedResult.unknownPeople.length;
+                                u++
+                            ) {
+                                addUniqueText(
+                                    unknownPeople,
+                                    unknownPeopleSeen,
+                                    combinedResult.unknownPeople[u]
+                                );
+                            }
+                        }
+                    },
+                    ScriptLanguage.JAVASCRIPT,
+                    undefined,
+                    UndoModes.ENTIRE_SCRIPT,
+                    "根据 JSON 生成第 " + (currentPageOffset + 1) + " 个跨页批次"
+                );
+            }
 
             var unknownMessage = "";
-            if (peopleResult.unknownPeople.length > 0) {
+            if (unknownPeople.length > 0) {
                 unknownMessage =
                     "\n\n未在人物索引中找到的人名数：" +
-                    peopleResult.unknownPeople.length +
+                    unknownPeople.length +
                     "\n未找到的人名示例：\n" +
-                    peopleResult.unknownPeople.slice(0, 20).join("\n");
+                    unknownPeople.slice(0, 20).join("\n");
             }
 
             alert(
@@ -1590,32 +2438,64 @@ var GraduationChapter2Auto = GraduationChapter2Auto || {};
                     entries.length +
                     "\n开始条目 id：" +
                     startEntryId +
+                    "\n使用页面数：" +
+                    pageCount +
+                    "\n文档页索引步长：" +
+                    pageIndexStepPerBatch +
+                    "（2 表示下一个跨页）" +
+                    "\n生成范围：" +
+                    runScopeDescription +
+                    "\n自动新增页面数：" +
+                    createdPageCount +
+                    "\n条目组数：" +
+                    entryGroupCount +
                     "\n\n事件标签数：" +
-                    eventResult.generatedCount +
-                    "，entry 组数：" +
-                    eventResult.entryGroupCount +
+                    eventGeneratedCount +
                     "，空 tags 条目：" +
-                    eventResult.skippedEntries +
+                    eventSkippedEntries +
                     "\n人物/任务标签数：" +
-                    peopleResult.generatedCount +
-                    "，entry 组数：" +
-                    peopleResult.entryGroupCount +
-                    "，空占位：" +
-                    peopleResult.placeholderCount +
+                    peopleGeneratedCount +
+                    "，人物/任务组数：" +
+                    peopleEntryGroupCount +
+                    "，空 people_tags 跳过：" +
+                    peopleSkippedEmptyCount +
                     "\n天气文本框数：" +
-                    weatherResult.generatedCount +
+                    weatherGeneratedCount +
                     "，空 weather：" +
-                    weatherResult.emptyWeatherCount +
+                    weatherEmptyCount +
                     "\n\n清理旧对象数：" +
-                    (removedEvent + removedPeople + removedWeather) +
+                    (removedEntry + removedEvent + removedPeople + removedWeather) +
                     "\n使用标签：\n" +
+                    entryLabel +
+                    "\n" +
                     eventLabel +
                     "\n" +
                     peopleLabel +
                     "\n" +
                     weatherLabel +
+                    (nextStartEntryId !== null
+                        ? "\n\n下一次继续运行 main.jsx 时，请输入开始 id：\n" +
+                            nextStartEntryId
+                        : "\n\n已经生成到 JSON 末尾。") +
                     unknownMessage
             );
-        }, "根据 JSON 一次生成事件、人物/任务、天气");
+        } catch (error) {
+            alert(
+                "脚本执行失败：\n\n" +
+                    errorText(error) +
+                    "\n\n行号：" +
+                    errorLine(error)
+            );
+        } finally {
+            if (performancePrefsChanged) {
+                try {
+                    app.scriptPreferences.enableRedraw = previousEnableRedraw;
+                } catch (restoreRedrawError) {}
+
+                try {
+                    app.preflightOptions.preflightOff = previousPreflightOff;
+                } catch (restorePreflightError) {}
+            }
+        }
     };
 })(GraduationChapter2Auto);

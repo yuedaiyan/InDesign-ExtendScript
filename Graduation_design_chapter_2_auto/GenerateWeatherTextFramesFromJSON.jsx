@@ -1,4 +1,4 @@
-/*
+﻿/*
   GenerateWeatherTextFramesFromJSON.jsx
 
   单独运行天气 / weather 文本框生成逻辑。

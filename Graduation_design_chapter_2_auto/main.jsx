@@ -1,5 +1,5 @@
-/*
-  GenerateChapter2AllFromSelectedGroup.jsx
+﻿/*
+  main.jsx
 
   用法：
   1. 打开 InDesign 文档。
@@ -10,11 +10,16 @@
      - 第 3 个：天气 / weather 文本框模板
   4. 运行本脚本。
 
-  本脚本会只询问一次生成标签前缀和开始 JSON id，
-  然后在同一个 UndoModes.ENTIRE_SCRIPT 操作里依次调用三个子逻辑。
+  本脚本会询问生成标签前缀、开始 JSON id 和生成范围，
+  然后按跨页批次依次调用三个子逻辑；每一跨页是一个撤销步骤。
 */
 
 (function () {
-    $.evalFile(new File(new File($.fileName).parent.fsName + "/GraduationChapter2AutoCore.jsxinc"));
+    $.evalFile(
+        new File(
+            new File($.fileName).parent.fsName +
+                "/GraduationChapter2AutoCore.jsxinc",
+        ),
+    );
     GraduationChapter2Auto.runAll();
 })();

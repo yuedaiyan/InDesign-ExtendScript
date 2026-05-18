@@ -1,4 +1,4 @@
-/*
+﻿/*
   GenerateTagLabelsFromJSON.jsx
 
   单独运行事件 / tags 标签生成逻辑。

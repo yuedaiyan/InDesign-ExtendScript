@@ -1,4 +1,4 @@
-/*
+﻿/*
   GeneratePeopleTagLabelsFromJSON.jsx
 
   单独运行人物 / people_tags 编号标签生成逻辑。
