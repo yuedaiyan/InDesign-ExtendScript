@@ -7,6 +7,7 @@
 (function () {
     var SUPPORTED_EXTENSIONS = [
         ".jpg",
+        ".svg",
         ".jpeg",
         ".png",
         ".tif",
