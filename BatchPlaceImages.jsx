@@ -5,6 +5,16 @@
  */
 
 (function () {
+    try {
+        main();
+    } catch (err) {
+        var msg = "脚本执行失败。";
+        if (err && err.message) msg += "\n\n" + err.message;
+        if (err && err.line) msg += "\n行号: " + err.line;
+        alert(msg);
+    }
+
+    function main() {
     var SUPPORTED_EXTENSIONS = [
         ".jpg",
         ".svg",
@@ -16,7 +26,7 @@
         ".pdf",
         ".ai",
         ".eps",
-        ".gif",
+        ".gif"
     ];
     var ROW_TOLERANCE = 5;
 
@@ -28,7 +38,12 @@
 
     function isEmptyGraphicFrame(item) {
         if (!item) return false;
-        var typeName = item.constructor.name;
+        var typeName = "";
+        try {
+            typeName = item.constructor.name;
+        } catch (e0) {
+            return false;
+        }
         if (
             typeName !== "Rectangle" &&
             typeName !== "Oval" &&
@@ -36,18 +51,27 @@
         ) {
             return false;
         }
-        if (item.graphics.length > 0) return false;
+        try {
+            if (item.graphics.length > 0) return false;
+        } catch (e1) {
+            return false;
+        }
         try {
             if (item.contentType === ContentType.TEXT_TYPE) return false;
-        } catch (e) {}
+        } catch (e2) {}
         try {
             if (item.parentStory && item.parentStory.characters.length > 0)
                 return false;
-        } catch (e) {}
+        } catch (e3) {}
         try {
             if (item.locked) return false;
             if (item.itemLayer.locked || !item.itemLayer.visible) return false;
-        } catch (e) {}
+        } catch (e4) {}
+        try {
+            if (!item.parentPage || !item.parentPage.isValid) return false;
+        } catch (e5) {
+            return false;
+        }
         return true;
     }
 
@@ -79,8 +103,8 @@
             selType === "WMF"
         ) {
             try {
-                preSelectedFrame = sel.parent;
-                preSelectInfo = "选中的是图片本身,已自动取其容器框";
+                preSelectInfo =
+                    "选中的是已置入的图片内容,请选中后续空白图片框";
             } catch (e) {
                 preSelectInfo = "选中了图片但无法获取容器框";
             }
@@ -110,21 +134,21 @@
     var rbA = radioGroup.add(
         "radiobutton",
         undefined,
-        "从选中的图片框开始" + (preSelectedFrame ? " ✓" : "(不可用)"),
+        "从选中的图片框开始" + (preSelectedFrame ? " ✓" : "(不可用)")
     );
     var rbB = radioGroup.add(
         "radiobutton",
         undefined,
-        "从指定页码的第一个空白框开始",
+        "从指定页码的第一个空白框开始"
     );
     var rbC = radioGroup.add(
         "radiobutton",
         undefined,
-        "从文档第一个空白框开始",
+        "从文档第一个空白框开始"
     );
 
     var pageInputGroup = radioGroup.add("group");
-    pageInputGroup.add("statictext", undefined, "    起始页码:");
+    pageInputGroup.add("statictext", undefined, "    起始页码(页面面板显示):");
     var pageInput = pageInputGroup.add("edittext", undefined, "1");
     pageInput.characters = 6;
     pageInput.enabled = false;
@@ -159,12 +183,12 @@
     var fitFill = fitPanel.add(
         "radiobutton",
         undefined,
-        "按比例填充框(可能裁切边缘)",
+        "按比例填充框(可能裁切边缘)"
     );
     var fitProp = fitPanel.add(
         "radiobutton",
         undefined,
-        "按比例适合(完整显示,可能留白)",
+        "按比例适合(完整显示,可能留白)"
     );
     fitFill.value = true;
     fitProp.value = false;
@@ -177,19 +201,27 @@
     if (dialog.show() !== 1) return;
 
     var startMode = rbA.value ? "A" : rbB.value ? "B" : "C";
-    var startPageNum = parseInt(pageInput.text, 10);
+    var startPageName = trim(pageInput.text);
     var fitMode = fitFill.value
         ? FitOptions.FILL_PROPORTIONALLY
         : FitOptions.PROPORTIONALLY;
 
-    if (
-        startMode === "B" &&
-        (isNaN(startPageNum) ||
-            startPageNum < 1 ||
-            startPageNum > doc.pages.length)
-    ) {
-        alert("页码无效。文档共 " + doc.pages.length + " 页。");
-        return;
+    var targetPageForModeB = null;
+    if (startMode === "B") {
+        if (startPageName === "") {
+            alert("起始页码不能为空。");
+            return;
+        }
+        targetPageForModeB = findPageByVisibleName(doc, startPageName);
+        if (targetPageForModeB === null) {
+            alert(
+                "没有找到页面面板中显示为 \"" +
+                    startPageName +
+                    "\" 的页面。\n\n" +
+                    "请按 InDesign 页面面板中显示的页码输入，例如 1、A-1、iii。"
+            );
+            return;
+        }
     }
 
     var folder = Folder.selectDialog("请选择存放图片的文件夹");
@@ -219,12 +251,11 @@
     }
 
     imageFiles.sort(function (a, b) {
-        if (a.name < b.name) return -1;
-        if (a.name > b.name) return 1;
-        return 0;
+        return naturalCompare(a.name, b.name);
     });
 
     var emptyFrames = [];
+    var seenFrames = {};
 
     for (var p = 0; p < doc.pages.length; p++) {
         var page = doc.pages[p];
@@ -232,10 +263,7 @@
 
         var allItems = page.allPageItems;
         for (var k = 0; k < allItems.length; k++) {
-            var item = allItems[k];
-            if (isEmptyGraphicFrame(item)) {
-                pageFrames.push(item);
-            }
+            collectEmptyFramesFromItem(allItems[k], page, pageFrames, seenFrames);
         }
 
         pageFrames.sort(function (a, b) {
@@ -294,7 +322,7 @@
         }
         startIndex = foundA;
     } else if (startMode === "B") {
-        var targetPage = doc.pages[startPageNum - 1];
+        var targetPage = targetPageForModeB;
         var foundB = -1;
         for (var sb = 0; sb < emptyFrames.length; sb++) {
             try {
@@ -305,7 +333,7 @@
             } catch (e) {}
         }
         if (foundB === -1) {
-            alert("第 " + startPageNum + " 页没有找到空白图片框。");
+            alert("第 " + pageDisplayName(targetPage) + " 没有找到空白图片框。");
             return;
         }
         startIndex = foundB;
@@ -351,6 +379,7 @@
 
     app.doScript(
         function () {
+            var oldRedraw = app.scriptPreferences.enableRedraw;
             app.scriptPreferences.enableRedraw = false;
             try {
                 for (var n = 0; n < placeCount; n++) {
@@ -371,13 +400,13 @@
                     }
                 }
             } finally {
-                app.scriptPreferences.enableRedraw = true;
+                app.scriptPreferences.enableRedraw = oldRedraw;
             }
         },
         ScriptLanguage.JAVASCRIPT,
         undefined,
         UndoModes.ENTIRE_SCRIPT,
-        "批量置入图片",
+        "批量置入图片"
     );
 
     var report = "完成!\n\n成功置入:" + successCount + " 张\n";
@@ -395,4 +424,109 @@
         report += "\n💡 如需撤销,按一次 Cmd+Z 即可全部撤销。";
     }
     alert(report);
+
+    function collectEmptyFramesFromItem(item, page, frames, seen) {
+        if (!item) return;
+
+        if (isEmptyGraphicFrame(item) && isOnPage(item, page)) {
+            addFrameOnce(item, frames, seen);
+            return;
+        }
+
+        try {
+            if (item.pageItems && item.pageItems.length > 0) {
+                for (var p = 0; p < item.pageItems.length; p++) {
+                    collectEmptyFramesFromItem(item.pageItems[p], page, frames, seen);
+                }
+            }
+        } catch (e1) {}
+
+        try {
+            if (item.allPageItems && item.allPageItems.length > 0) {
+                for (var a = 0; a < item.allPageItems.length; a++) {
+                    collectEmptyFramesFromItem(item.allPageItems[a], page, frames, seen);
+                }
+            }
+        } catch (e2) {}
+    }
+
+    function addFrameOnce(frame, frames, seen) {
+        var key = getItemKey(frame);
+        if (key !== null) {
+            if (seen[key]) return;
+            seen[key] = true;
+        }
+        frames.push(frame);
+    }
+
+    function getItemKey(item) {
+        try {
+            if (item.id !== undefined && item.id !== null) {
+                return "id:" + item.id;
+            }
+        } catch (e1) {}
+        try {
+            return "spec:" + item.toSpecifier();
+        } catch (e2) {}
+        return null;
+    }
+
+    function isOnPage(item, page) {
+        try {
+            return item.parentPage === page;
+        } catch (e1) {
+            return false;
+        }
+    }
+
+    function findPageByVisibleName(doc, pageName) {
+        for (var i = 0; i < doc.pages.length; i++) {
+            try {
+                if (String(doc.pages[i].name) === pageName) return doc.pages[i];
+            } catch (e1) {}
+        }
+        return null;
+    }
+
+    function pageDisplayName(page) {
+        try {
+            return page.name;
+        } catch (e1) {}
+        return "未知页面";
+    }
+
+    function naturalCompare(a, b) {
+        var aa = splitNatural(a);
+        var bb = splitNatural(b);
+        var len = Math.min(aa.length, bb.length);
+
+        for (var i = 0; i < len; i++) {
+            var ca = aa[i];
+            var cb = bb[i];
+            var na = /^\d+$/.test(ca);
+            var nb = /^\d+$/.test(cb);
+
+            if (na && nb) {
+                var ia = parseInt(ca, 10);
+                var ib = parseInt(cb, 10);
+                if (ia !== ib) return ia - ib;
+                if (ca.length !== cb.length) return ca.length - cb.length;
+            } else if (ca !== cb) {
+                return ca < cb ? -1 : 1;
+            }
+        }
+
+        return aa.length - bb.length;
+    }
+
+    function splitNatural(value) {
+        var parts = String(value).toLowerCase().match(/\d+|\D+/g);
+        if (parts && parts.length > 0) return parts;
+        return [String(value).toLowerCase()];
+    }
+
+    function trim(value) {
+        return String(value).replace(/^\s+|\s+$/g, "");
+    }
+    }
 })();
