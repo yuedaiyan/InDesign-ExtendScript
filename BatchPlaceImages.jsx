@@ -78,6 +78,7 @@
     // ============ 改进的选择检测 ============
     var preSelectedFrame = null;
     var preSelectInfo = "";
+    var preSelectedPageName = "";
 
     if (app.selection.length === 0) {
         preSelectInfo = "未选中任何对象";
@@ -95,6 +96,7 @@
         ) {
             preSelectedFrame = sel;
             preSelectInfo = "已选中 " + selType;
+            preSelectedPageName = getFramePageName(preSelectedFrame);
         } else if (
             selType === "Image" ||
             selType === "PDF" ||
@@ -149,7 +151,11 @@
 
     var pageInputGroup = radioGroup.add("group");
     pageInputGroup.add("statictext", undefined, "    起始页码(页面面板显示):");
-    var pageInput = pageInputGroup.add("edittext", undefined, "1");
+    var pageInput = pageInputGroup.add(
+        "edittext",
+        undefined,
+        preSelectedPageName !== "" ? preSelectedPageName : getFirstPageName(doc)
+    );
     pageInput.characters = 6;
     pageInput.enabled = false;
 
@@ -218,41 +224,20 @@
                 "没有找到页面面板中显示为 \"" +
                     startPageName +
                     "\" 的页面。\n\n" +
-                    "请按 InDesign 页面面板中显示的页码输入，例如 1、A-1、iii。"
+                    "请按 InDesign 页面面板中显示的页码输入，例如 1、A-1、iii；也可以输入文档中的第几页。"
             );
             return;
         }
     }
 
-    var folder = Folder.selectDialog("请选择存放图片的文件夹");
-    if (folder === null) return;
+    var imageSource = chooseImageSource();
+    if (imageSource === null) return;
 
-    var allFiles = folder.getFiles();
-    var imageFiles = [];
-    for (var i = 0; i < allFiles.length; i++) {
-        var f = allFiles[i];
-        if (f instanceof File) {
-            var name = f.name.toLowerCase();
-            for (var j = 0; j < SUPPORTED_EXTENSIONS.length; j++) {
-                if (
-                    name.lastIndexOf(SUPPORTED_EXTENSIONS[j]) ===
-                    name.length - SUPPORTED_EXTENSIONS[j].length
-                ) {
-                    imageFiles.push(f);
-                    break;
-                }
-            }
-        }
-    }
-
+    var imageFiles = imageSource.files;
     if (imageFiles.length === 0) {
-        alert("所选文件夹内没有找到支持的图片文件。");
+        alert("没有找到可置入的后续图片。");
         return;
     }
-
-    imageFiles.sort(function (a, b) {
-        return naturalCompare(a.name, b.name);
-    });
 
     var emptyFrames = [];
     var seenFrames = {};
@@ -351,6 +336,9 @@
     } catch (e) {}
 
     var confirmMsg =
+        "图片来源:" +
+        imageSource.description +
+        "\n" +
         "找到图片:" +
         imageFiles.length +
         " 张\n" +
@@ -425,6 +413,155 @@
     }
     alert(report);
 
+    function chooseImageSource() {
+        var mode = askImageSourceMode();
+        if (mode === null) return null;
+
+        if (mode === "folder") {
+            var folder = Folder.selectDialog("请选择存放图片的文件夹");
+            if (folder === null) return null;
+
+            var folderImages = getImageFiles(folder);
+            folderImages.sort(function (a, b) {
+                return naturalCompare(a.name, b.name);
+            });
+
+            if (folderImages.length === 0) {
+                alert("所选文件夹内没有找到支持的图片文件。");
+                return null;
+            }
+
+            return {
+                files: folderImages,
+                description: "文件夹全部图片\n" + folder.fsName + "\n"
+            };
+        }
+
+        var startFile = File.openDialog(
+            "请选择起点图片；脚本只会置入同目录中排序排在它后面的图片",
+            function (f) {
+                if (f instanceof Folder) return true;
+                return isSupportedImageFile(f);
+            },
+            false
+        );
+        if (startFile === null) return null;
+
+        if (!isSupportedImageFile(startFile)) {
+            alert("请选择支持的图片文件。");
+            return null;
+        }
+
+        var sameFolder = startFile.parent;
+        var sameFolderImages = getImageFiles(sameFolder);
+        sameFolderImages.sort(function (a, b) {
+            return naturalCompare(a.name, b.name);
+        });
+
+        var startFileIndex = findFileIndex(sameFolderImages, startFile);
+        if (startFileIndex < 0) {
+            alert("没有在同目录的图片列表中找到你指定的起点图片。");
+            return null;
+        }
+
+        var followingImages = [];
+        for (var i = startFileIndex + 1; i < sameFolderImages.length; i++) {
+            followingImages.push(sameFolderImages[i]);
+        }
+
+        if (followingImages.length === 0) {
+            alert("指定图片后面没有其他可置入图片。");
+            return null;
+        }
+
+        return {
+            files: followingImages,
+            description:
+                "指定图片之后的同目录图片\n" +
+                "起点图片: " +
+                startFile.name +
+                "\n目录: " +
+                sameFolder.fsName +
+                "\n"
+        };
+    }
+
+    function askImageSourceMode() {
+        var dlg = new Window("dialog", "选择图片来源");
+        dlg.orientation = "column";
+        dlg.alignChildren = "fill";
+
+        var panel = dlg.add("panel", undefined, "图片来源");
+        panel.orientation = "column";
+        panel.alignChildren = "left";
+        panel.margins = 15;
+
+        var folderMode = panel.add(
+            "radiobutton",
+            undefined,
+            "选择文件夹: 按顺序置入文件夹中的所有图片"
+        );
+        var afterFileMode = panel.add(
+            "radiobutton",
+            undefined,
+            "选择具体图片: 只置入同目录中排序排在它后面的图片"
+        );
+        folderMode.value = true;
+
+        var btnGroup = dlg.add("group");
+        btnGroup.alignment = "right";
+        btnGroup.add("button", undefined, "继续", { name: "ok" });
+        btnGroup.add("button", undefined, "取消", { name: "cancel" });
+
+        if (dlg.show() !== 1) return null;
+        return folderMode.value ? "folder" : "afterFile";
+    }
+
+    function getImageFiles(folder) {
+        var allFiles = folder.getFiles();
+        var imageFiles = [];
+
+        for (var i = 0; i < allFiles.length; i++) {
+            if (isSupportedImageFile(allFiles[i])) {
+                imageFiles.push(allFiles[i]);
+            }
+        }
+
+        return imageFiles;
+    }
+
+    function isSupportedImageFile(file) {
+        if (!(file instanceof File)) return false;
+
+        var name = file.name.toLowerCase();
+        for (var i = 0; i < SUPPORTED_EXTENSIONS.length; i++) {
+            var ext = SUPPORTED_EXTENSIONS[i];
+            if (name.lastIndexOf(ext) === name.length - ext.length) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    function findFileIndex(files, targetFile) {
+        var targetKey = fileKey(targetFile);
+        for (var i = 0; i < files.length; i++) {
+            if (fileKey(files[i]) === targetKey) return i;
+        }
+        return -1;
+    }
+
+    function fileKey(file) {
+        try {
+            return String(file.fsName);
+        } catch (e1) {}
+        try {
+            return String(file.fullName);
+        } catch (e2) {}
+        return String(file.name);
+    }
+
     function collectEmptyFramesFromItem(item, page, frames, seen) {
         if (!item) return;
 
@@ -480,12 +617,40 @@
     }
 
     function findPageByVisibleName(doc, pageName) {
+        var cleanName = trim(pageName);
         for (var i = 0; i < doc.pages.length; i++) {
             try {
-                if (String(doc.pages[i].name) === pageName) return doc.pages[i];
+                if (String(doc.pages[i].name) === cleanName) return doc.pages[i];
             } catch (e1) {}
         }
+
+        var pageNumber = parseInt(cleanName, 10);
+        if (
+            !isNaN(pageNumber) &&
+            String(pageNumber) === cleanName &&
+            pageNumber >= 1 &&
+            pageNumber <= doc.pages.length
+        ) {
+            return doc.pages[pageNumber - 1];
+        }
+
         return null;
+    }
+
+    function getFramePageName(frame) {
+        try {
+            if (frame.parentPage && frame.parentPage.isValid) {
+                return String(frame.parentPage.name);
+            }
+        } catch (e1) {}
+        return "";
+    }
+
+    function getFirstPageName(doc) {
+        try {
+            if (doc.pages.length > 0) return String(doc.pages[0].name);
+        } catch (e1) {}
+        return "1";
     }
 
     function pageDisplayName(page) {

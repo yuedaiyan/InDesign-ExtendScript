@@ -18,21 +18,21 @@
     var TARGET_DOC_NAME = "c2_day.indd";
 
     // 源文件中要复制的图层名称列表。多个图层可用逗号或换行分隔
-    var SOURCE_LAYER_NAMES = "body_other";
+    var SOURCE_LAYER_NAMES = "body_other,body_img";
     // var SOURCE_LAYER_NAMES = "body_other\nbody_img";
 
     // 目标文件中要粘贴到的图层名称列表。数量和顺序必须与源图层列表一一对应
-    var TARGET_LAYER_NAMES = "body_other";
+    var TARGET_LAYER_NAMES = "body_other,body_img";
     // var TARGET_LAYER_NAMES = "body_other\nbody_img";
 
     // 源文件从哪一页开始复制
-    var SOURCE_START_PAGE = 350;
+    var SOURCE_START_PAGE = 120;
 
     // 源文件复制到哪一页结束。脚本会根据起始页和结束页自动计算页数
-    var SOURCE_END_PAGE = 361;
+    var SOURCE_END_PAGE = 153;
 
     // 目标文件从第几页开始粘贴
-    var TARGET_START_PAGE = 234;
+    var TARGET_START_PAGE = 250;
 
     // 是否自动创建目标图层
     var CREATE_TARGET_LAYER_IF_MISSING = false;
@@ -71,7 +71,9 @@
             SOURCE_LAYER_NAMES === "" ||
             TARGET_LAYER_NAMES === ""
         ) {
-            alert("参数不能为空：目标文件名、源图层列表、目标图层列表都必须填写。");
+            alert(
+                "参数不能为空：目标文件名、源图层列表、目标图层列表都必须填写。",
+            );
             return;
         }
 
@@ -80,7 +82,7 @@
 
         if (!sourceDoc) {
             alert(
-                "找不到源文件。请检查 SOURCE_DOC_NAME，或者让源文件处于当前激活状态。"
+                "找不到源文件。请检查 SOURCE_DOC_NAME，或者让源文件处于当前激活状态。",
             );
             return;
         }
@@ -108,7 +110,7 @@
             !hasPageValue(TARGET_START_PAGE)
         ) {
             alert(
-                "页码参数错误：SOURCE_START_PAGE、SOURCE_END_PAGE 和 TARGET_START_PAGE 都不能为空。"
+                "页码参数错误：SOURCE_START_PAGE、SOURCE_END_PAGE 和 TARGET_START_PAGE 都不能为空。",
             );
             return;
         }
@@ -123,7 +125,7 @@
             copiedCount: 0,
             skippedPageCount: 0,
             failed: [],
-            layerStats: []
+            layerStats: [],
         };
 
         app.doScript(
@@ -144,10 +146,18 @@
             ScriptLanguage.JAVASCRIPT,
             undefined,
             UndoModes.ENTIRE_SCRIPT,
-            "跨文件复制指定图层内容"
+            "跨文件复制指定图层内容",
         );
 
-        alert(buildFinalReport(sourceDoc, targetDoc, pagePlan, layerPairs, result));
+        alert(
+            buildFinalReport(
+                sourceDoc,
+                targetDoc,
+                pagePlan,
+                layerPairs,
+                result,
+            ),
+        );
     }
 
     function buildPagePlan(sourceDoc, targetDoc) {
@@ -158,7 +168,7 @@
                 message:
                     "找不到源文件起始页：" +
                     SOURCE_START_PAGE +
-                    "\n\n脚本会优先匹配 InDesign 页码面板里的显示页码；如果找不到，再按文档物理页序号匹配。"
+                    "\n\n脚本会优先匹配 InDesign 页码面板里的显示页码；如果找不到，再按文档物理页序号匹配。",
             };
         }
 
@@ -169,7 +179,7 @@
                 message:
                     "找不到源文件结束页：" +
                     SOURCE_END_PAGE +
-                    "\n\n脚本会优先匹配 InDesign 页码面板里的显示页码；如果找不到，再按文档物理页序号匹配。"
+                    "\n\n脚本会优先匹配 InDesign 页码面板里的显示页码；如果找不到，再按文档物理页序号匹配。",
             };
         }
 
@@ -183,7 +193,7 @@
                     "\n" +
                     "源结束页：" +
                     getPageName(sourceDoc.pages[sourceEndIndex]) +
-                    "\n\n结束页不能排在起始页前面。"
+                    "\n\n结束页不能排在起始页前面。",
             };
         }
 
@@ -196,7 +206,7 @@
                 message:
                     "找不到目标文件起始页：" +
                     TARGET_START_PAGE +
-                    "\n\n脚本会优先匹配 InDesign 页码面板里的显示页码；如果找不到，再按文档物理页序号匹配。"
+                    "\n\n脚本会优先匹配 InDesign 页码面板里的显示页码；如果找不到，再按文档物理页序号匹配。",
             };
         }
 
@@ -225,7 +235,7 @@
                     "\n" +
                     "从这个起点最多可粘贴：" +
                     availableTargetCount +
-                    " 页"
+                    " 页",
             };
         }
 
@@ -233,7 +243,7 @@
         for (var offset = 0; offset < pageCount; offset++) {
             pairs.push({
                 sourcePage: sourceDoc.pages[sourceStartIndex + offset],
-                targetPage: targetDoc.pages[targetStartIndex + offset]
+                targetPage: targetDoc.pages[targetStartIndex + offset],
             });
         }
 
@@ -244,7 +254,7 @@
             targetStartPage: targetDoc.pages[targetStartIndex],
             targetEndPage: targetDoc.pages[targetEndIndex],
             pageCount: pageCount,
-            pairs: pairs
+            pairs: pairs,
         };
     }
 
@@ -266,19 +276,19 @@
         var sourceDocInput = sourceDocGroup.add(
             "edittext",
             undefined,
-            SOURCE_DOC_NAME
+            SOURCE_DOC_NAME,
         );
         sourceDocInput.characters = 34;
 
         var sourceHint = dialog.add(
             "statictext",
             undefined,
-            "源文件名留空时，使用当前激活文件：" + getActiveDocumentSummary()
+            "源文件名留空时，使用当前激活文件：" + getActiveDocumentSummary(),
         );
         sourceHint.graphics.foregroundColor = sourceHint.graphics.newPen(
             sourceHint.graphics.PenType.SOLID_COLOR,
             [0.5, 0.5, 0.5],
-            1
+            1,
         );
 
         var targetDocGroup = dialog.add("group");
@@ -288,7 +298,7 @@
         var targetDocInput = targetDocGroup.add(
             "edittext",
             undefined,
-            TARGET_DOC_NAME
+            TARGET_DOC_NAME,
         );
         targetDocInput.characters = 34;
 
@@ -306,7 +316,7 @@
             "edittext",
             undefined,
             SOURCE_LAYER_NAMES,
-            { multiline: true, scrolling: true }
+            { multiline: true, scrolling: true },
         );
         sourceLayerInput.characters = 28;
         sourceLayerInput.preferredSize.height = 82;
@@ -320,7 +330,7 @@
             "edittext",
             undefined,
             TARGET_LAYER_NAMES,
-            { multiline: true, scrolling: true }
+            { multiline: true, scrolling: true },
         );
         targetLayerInput.characters = 28;
         targetLayerInput.preferredSize.height = 82;
@@ -328,12 +338,12 @@
         var layerHint = dialog.add(
             "statictext",
             undefined,
-            "源图层和目标图层按顺序一一对应；每行一个图层，也可以用逗号或分号分隔。"
+            "源图层和目标图层按顺序一一对应；每行一个图层，也可以用逗号或分号分隔。",
         );
         layerHint.graphics.foregroundColor = layerHint.graphics.newPen(
             layerHint.graphics.PenType.SOLID_COLOR,
             [0.5, 0.5, 0.5],
-            1
+            1,
         );
 
         var pageGroup = dialog.add("group");
@@ -343,46 +353,46 @@
         var sourcePageInput = pageGroup.add(
             "edittext",
             undefined,
-            String(SOURCE_START_PAGE)
+            String(SOURCE_START_PAGE),
         );
         sourcePageInput.characters = 8;
         pageGroup.add("statictext", undefined, "源结束页：");
         var sourceEndPageInput = pageGroup.add(
             "edittext",
             undefined,
-            String(SOURCE_END_PAGE)
+            String(SOURCE_END_PAGE),
         );
         sourceEndPageInput.characters = 8;
         pageGroup.add("statictext", undefined, "目标起始页：");
         var targetPageInput = pageGroup.add(
             "edittext",
             undefined,
-            String(TARGET_START_PAGE)
+            String(TARGET_START_PAGE),
         );
         targetPageInput.characters = 8;
 
         var pageHint = dialog.add(
             "statictext",
             undefined,
-            "页码会优先匹配 InDesign 页码面板里的显示页码；复制页数会由源起始页和源结束页自动计算。"
+            "页码会优先匹配 InDesign 页码面板里的显示页码；复制页数会由源起始页和源结束页自动计算。",
         );
         pageHint.graphics.foregroundColor = pageHint.graphics.newPen(
             pageHint.graphics.PenType.SOLID_COLOR,
             [0.5, 0.5, 0.5],
-            1
+            1,
         );
 
         var createLayerCheckbox = dialog.add(
             "checkbox",
             undefined,
-            "目标图层不存在时自动创建"
+            "目标图层不存在时自动创建",
         );
         createLayerCheckbox.value = CREATE_TARGET_LAYER_IF_MISSING;
 
         var skipSingleCheckbox = dialog.add(
             "checkbox",
             undefined,
-            "跳过单页跨页"
+            "跳过单页跨页",
         );
         skipSingleCheckbox.value = SKIP_SINGLE_PAGE_SPREADS;
 
@@ -453,7 +463,7 @@
         if (sourceNames.length === 0 || targetNames.length === 0) {
             return {
                 ok: false,
-                message: "源图层列表和目标图层列表都至少要有一个图层。"
+                message: "源图层列表和目标图层列表都至少要有一个图层。",
             };
         }
 
@@ -467,7 +477,7 @@
                     "\n" +
                     "目标图层数量：" +
                     targetNames.length +
-                    "\n\n请让两边列表一一对应。"
+                    "\n\n请让两边列表一一对应。",
             };
         }
 
@@ -492,27 +502,31 @@
                 sourceName: sourceNames[i],
                 targetName: targetNames[i],
                 sourceLayer: sourceLayer,
-                targetLayer: targetLayer
+                targetLayer: targetLayer,
             });
         }
 
         if (missingSource.length > 0 || missingTarget.length > 0) {
             var message = "";
             if (missingSource.length > 0) {
-                message += "源文件中找不到以下图层：\n" + missingSource.join("\n") + "\n\n";
+                message +=
+                    "源文件中找不到以下图层：\n" +
+                    missingSource.join("\n") +
+                    "\n\n";
             }
             if (missingTarget.length > 0) {
-                message += "目标文件中找不到以下图层：\n" + missingTarget.join("\n");
+                message +=
+                    "目标文件中找不到以下图层：\n" + missingTarget.join("\n");
             }
             return {
                 ok: false,
-                message: message
+                message: message,
             };
         }
 
         return {
             ok: true,
-            layerPairs: layerPairs
+            layerPairs: layerPairs,
         };
     }
 
@@ -533,7 +547,9 @@
             var pair = layerPairs[i];
 
             if (!pair.targetLayer) {
-                pair.targetLayer = targetDoc.layers.add({ name: pair.targetName });
+                pair.targetLayer = targetDoc.layers.add({
+                    name: pair.targetName,
+                });
             }
 
             unlockLayer(pair.sourceLayer);
@@ -598,7 +614,7 @@
                 sourceName: layerPairs[layerIndex].sourceName,
                 targetName: layerPairs[layerIndex].targetName,
                 copied: 0,
-                failed: 0
+                failed: 0,
             });
         }
 
@@ -614,12 +630,16 @@
                 continue;
             }
 
-            for (var pairIndex = 0; pairIndex < layerPairs.length; pairIndex++) {
+            for (
+                var pairIndex = 0;
+                pairIndex < layerPairs.length;
+                pairIndex++
+            ) {
                 var layerPair = layerPairs[pairIndex];
                 var layerStat = result.layerStats[pairIndex];
                 var itemsToCopy = getTopLevelPageItemsOnLayer(
                     sourcePage,
-                    layerPair.sourceLayer
+                    layerPair.sourceLayer,
                 );
 
                 for (
@@ -633,7 +653,7 @@
                         targetPage,
                         layerPair,
                         result,
-                        layerStat
+                        layerStat,
                     );
                 }
             }
@@ -646,7 +666,7 @@
         targetPage,
         layerPair,
         result,
-        layerStat
+        layerStat,
     ) {
         try {
             var duplicatedItem = sourceItem.duplicate(targetPage);
@@ -667,7 +687,7 @@
                     "，对象 " +
                     getItemName(sourceItem) +
                     "： " +
-                    getErrorMessage(dupErr)
+                    getErrorMessage(dupErr),
             );
         }
     }
@@ -678,7 +698,7 @@
         return {
             layer: layer,
             locked: safeRead(layer, "locked"),
-            visible: safeRead(layer, "visible")
+            visible: safeRead(layer, "visible"),
         };
     }
 
@@ -730,7 +750,13 @@
         return result;
     }
 
-    function buildFinalReport(sourceDoc, targetDoc, pagePlan, layerPairs, result) {
+    function buildFinalReport(
+        sourceDoc,
+        targetDoc,
+        pagePlan,
+        layerPairs,
+        result,
+    ) {
         var report =
             "复制完成。\n\n" +
             "源文件：" +
