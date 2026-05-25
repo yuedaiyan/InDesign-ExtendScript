@@ -1,3 +1,7 @@
+/* 
+移除页面中所有的网格
+*/
+
 function main() {
     if (app.documents.length === 0) {
         alert("请先打开一个 InDesign 文档。");
@@ -12,7 +16,8 @@ function main() {
         return;
     }
 
-    var message = "当前文档共有 " + guideCount + " 条参考线。\n\n确定要全部删除吗？";
+    var message =
+        "当前文档共有 " + guideCount + " 条参考线。\n\n确定要全部删除吗？";
     if (!confirm(message)) {
         return;
     }
@@ -24,7 +29,7 @@ function main() {
         ScriptLanguage.JAVASCRIPT,
         undefined,
         UndoModes.ENTIRE_SCRIPT,
-        "删除全部参考线"
+        "删除全部参考线",
     );
 
     alert("已删除 " + guideCount + " 条参考线。");
