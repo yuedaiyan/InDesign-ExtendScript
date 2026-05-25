@@ -4,7 +4,7 @@
  * 自动检测当前文档中链接缺失的图片框，并按文件夹图片顺序一一替换。
  * - 缺失图片框按文档页面阅读顺序排序
  * - 文件夹图片按自然文件名顺序排序
- * - 实际替换使用 link.relink()，保持原图片框位置
+ * - 实际替换使用 frame.place()，绕开缺失链接的逐个更新
  * - 全部替换会被包装为一次撤销操作
  */
 
@@ -114,17 +114,16 @@
         app.doScript(
             function () {
                 var oldRedraw = app.scriptPreferences.enableRedraw;
+                var oldUserInteraction = app.scriptPreferences.userInteractionLevel;
                 app.scriptPreferences.enableRedraw = false;
+                app.scriptPreferences.userInteractionLevel = UserInteractionLevels.NEVER_INTERACT;
                 try {
                     for (var i = 0; i < replaceCount; i++) {
                         var item = missingItems[i];
                         var imgFile = imageFiles[startImageIndex + i];
                         try {
-                            item.link.relink(imgFile);
-                            try {
-                                item.link.update();
-                            } catch (updateErr) {}
-
+                            clearFrameGraphics(item.frame);
+                            item.frame.place(imgFile);
                             if (shouldFit) {
                                 applyFit(item.frame, fitMode);
                             }
@@ -137,6 +136,7 @@
                         }
                     }
                 } finally {
+                    app.scriptPreferences.userInteractionLevel = oldUserInteraction;
                     app.scriptPreferences.enableRedraw = oldRedraw;
                 }
             },
@@ -206,6 +206,7 @@
             result.items.push({
                 link: link,
                 frame: frame,
+                graphic: graphic,
                 oldName: oldName
             });
         }
@@ -420,7 +421,7 @@
         fitPanel.orientation = "column";
         fitPanel.alignChildren = "left";
         fitPanel.margins = 12;
-        var fitKeep = fitPanel.add("radiobutton", undefined, "只重新链接，不重新适配（保留原图片变换）");
+        var fitKeep = fitPanel.add("radiobutton", undefined, "直接置入，不额外适配");
         var fitFill = fitPanel.add("radiobutton", undefined, "按比例填充框（可能裁切边缘）");
         var fitProp = fitPanel.add("radiobutton", undefined, "按比例适合（完整显示，可能留白）");
         fitKeep.value = true;
@@ -454,6 +455,16 @@
                 }
             }
         } catch (fitErr) {}
+    }
+
+    function clearFrameGraphics(frame) {
+        try {
+            for (var i = frame.graphics.length - 1; i >= 0; i--) {
+                try {
+                    frame.graphics[i].remove();
+                } catch (removeErr) {}
+            }
+        } catch (e1) {}
     }
 
     function buildImagePreview(imageFiles) {

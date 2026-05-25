@@ -1,30 +1,28 @@
 /*
   ExportBookImageFileIndexToJSONL.jsx
 
-  Select an InDesign Book (.indb), count unique linked image files,
-  and write one JSONL/NDJSON record per image file with all page occurrences.
+  Select one or more InDesign documents (.indd), count unique linked image files,
+  and write one JSONL/NDJSON record per image file with document/page locations.
 */
 
 function main() {
     alert(
         "脚本已启动。\n\n" +
-            "下一步请选择一个 .indb 书籍文件。\n" +
-            "脚本会统计书中有多少个唯一图片文件，并列出每个图片出现在哪些页面。"
+            "下一步请选择一个或多个 .indd 文件。\n" +
+            "脚本会统计这些文件中有多少个唯一图片文件，并列出每个图片出现在哪个文件的哪个页码。"
     );
 
-    var bookFile = chooseBookFile();
-    if (!bookFile) {
-        alert("已取消：没有选择 .indb 书籍文件。");
+    var documentFiles = chooseDocumentFiles();
+    if (!documentFiles || documentFiles.length === 0) {
+        alert("已取消：没有选择 .indd 文件。");
         return;
     }
 
     var scriptFolder = getScriptFolder();
-    var outputFiles = buildOutputFiles(scriptFolder, bookFile);
+    var outputFiles = buildOutputFiles(scriptFolder, documentFiles);
 
     var oldUserInteraction = app.scriptPreferences.userInteractionLevel;
     var oldRedraw = app.scriptPreferences.enableRedraw;
-    var book = null;
-    var openedBookHere = false;
     var completionMessage = "";
 
     try {
@@ -32,15 +30,7 @@ function main() {
             UserInteractionLevels.NEVER_INTERACT;
         app.scriptPreferences.enableRedraw = false;
 
-        var existingBook = findOpenBookByPath(bookFile);
-        if (existingBook) {
-            book = existingBook;
-        } else {
-            book = app.open(bookFile);
-            openedBookHere = true;
-        }
-
-        var result = scanBook(book, bookFile);
+        var result = scanDocuments(documentFiles);
         writeImageIndexJSONL(outputFiles.index, result);
         writeTextFile(
             outputFiles.summary,
@@ -49,9 +39,7 @@ function main() {
 
         completionMessage =
             "完成！\n\n" +
-            "书籍: " +
-            result.bookName +
-            "\n文档数: " +
+            "选择的 InDesign 文件数: " +
             result.summary.documentCount +
             "\n页面数: " +
             result.summary.pageCount +
@@ -74,11 +62,6 @@ function main() {
             "\n\n摘要 JSON 已保存到:\n" +
             outputFiles.summary.fsName;
     } finally {
-        if (openedBookHere && book) {
-            try {
-                book.close(SaveOptions.NO);
-            } catch (closeBookError) {}
-        }
         app.scriptPreferences.userInteractionLevel = oldUserInteraction;
         app.scriptPreferences.enableRedraw = oldRedraw;
     }
@@ -88,16 +71,50 @@ function main() {
     }
 }
 
-function chooseBookFile() {
-    return File.openDialog("请选择 InDesign 书籍文件 (.indb)", "*.indb", false);
+function chooseDocumentFiles() {
+    var chosen = File.openDialog(
+        "请选择一个或多个 InDesign 文档 (.indd)",
+        "*.indd",
+        true
+    );
+    if (!chosen) {
+        return [];
+    }
+    if (!(chosen instanceof Array)) {
+        chosen = [chosen];
+    }
+    return uniqueFiles(chosen);
 }
 
-function scanBook(book, bookFile) {
+function uniqueFiles(files) {
+    var seen = {};
+    var out = [];
+    for (var i = 0; i < files.length; i++) {
+        var file = files[i];
+        var path = normalizePath(file ? file.fsName : "");
+        if (!path || seen[path]) {
+            continue;
+        }
+        seen[path] = true;
+        out.push(file);
+    }
+    return out;
+}
+
+function filesToPathList(files) {
+    var out = [];
+    for (var i = 0; i < files.length; i++) {
+        out.push(files[i].fsName);
+    }
+    return out;
+}
+
+function scanDocuments(documentFiles) {
     var result = {
-        schemaVersion: 1,
+        schemaVersion: 2,
         generatedAt: formatDate(new Date()),
-        bookName: valueOrBlank(safeRead(book, "name")) || bookFile.name,
-        bookPath: bookFile.fsName,
+        sourceType: "inddFiles",
+        sourceFiles: filesToPathList(documentFiles),
         summary: {
             documentCount: 0,
             pageCount: 0,
@@ -112,31 +129,8 @@ function scanBook(book, bookFile) {
         embeddedGraphics: []
     };
 
-    var contents = safeRead(book, "bookContents");
-    var contentCount = collectionLength(contents);
-    var bookPageNumber = 1;
-
-    for (var i = 0; i < contentCount; i++) {
-        var bookContent = null;
-        try {
-            bookContent = contents[i];
-        } catch (contentError) {
-            result.summary.errorCount++;
-            result.documents.push({
-                bookDocumentIndex: i + 1,
-                error: "无法读取 bookContents[" + i + "]: " + contentError
-            });
-            continue;
-        }
-
-        var docSummary = scanBookContent(
-            result,
-            bookContent,
-            i + 1,
-            bookPageNumber
-        );
-        bookPageNumber = docSummary.nextBookPageNumber;
-        docSummary.nextBookPageNumber = undefined;
+    for (var i = 0; i < documentFiles.length; i++) {
+        var docSummary = scanDocumentFile(result, documentFiles[i], i + 1);
         result.documents.push(docSummary);
         result.summary.documentCount++;
     }
@@ -145,23 +139,19 @@ function scanBook(book, bookFile) {
     return result;
 }
 
-function scanBookContent(result, bookContent, bookDocumentIndex, startBookPageNumber) {
-    var docFile = getBookContentFile(bookContent);
+function scanDocumentFile(result, docFile, documentIndex) {
     var docSummary = {
-        bookDocumentIndex: bookDocumentIndex,
-        bookContentName: valueOrBlank(safeRead(bookContent, "name")),
+        documentIndex: documentIndex,
         documentName: "",
         documentPath: docFile ? docFile.fsName : "",
-        bookPageRange: valueOrBlank(safeRead(bookContent, "documentPageRange")),
         pageCount: 0,
         graphicPlacementCount: 0,
         uniqueLinkedImageFileCount: 0,
-        embeddedGraphicCount: 0,
-        nextBookPageNumber: startBookPageNumber
+        embeddedGraphicCount: 0
     };
 
     if (!docFile) {
-        docSummary.error = "无法读取书籍条目的文件路径。";
+        docSummary.error = "无法读取文档文件路径。";
         result.summary.errorCount++;
         return docSummary;
     }
@@ -195,15 +185,7 @@ function scanBookContent(result, bookContent, bookDocumentIndex, startBookPageNu
         result.summary.pageCount += pageCount;
 
         for (var p = 0; p < pageCount; p++) {
-            scanPage(
-                result,
-                docSummary,
-                docSeen,
-                pages[p],
-                p + 1,
-                docSummary.nextBookPageNumber
-            );
-            docSummary.nextBookPageNumber++;
+            scanPage(result, docSummary, docSeen, pages[p]);
         }
 
         var uniqueCount = 0;
@@ -234,9 +216,7 @@ function scanPage(
     result,
     docSummary,
     docSeen,
-    page,
-    documentPageNumber,
-    bookPageNumber
+    page
 ) {
     var graphics = safeRead(page, "allGraphics");
     var count = collectionLength(graphics);
@@ -250,10 +230,7 @@ function scanPage(
                 docSummary,
                 docSeen,
                 graphic,
-                i + 1,
-                pageName,
-                documentPageNumber,
-                bookPageNumber
+                pageName
             );
         } catch (error) {
             result.summary.errorCount++;
@@ -266,10 +243,7 @@ function addGraphicOccurrence(
     docSummary,
     docSeen,
     graphic,
-    imageIndexOnPage,
-    pageName,
-    documentPageNumber,
-    bookPageNumber
+    pageName
 ) {
     var link = safeRead(graphic, "itemLink");
     var linkPath = valueOrBlank(safeRead(link, "filePath"));
@@ -280,16 +254,9 @@ function addGraphicOccurrence(
     docSummary.graphicPlacementCount++;
 
     var occurrence = {
-        bookPageNumber: bookPageNumber,
         pageName: pageName,
         documentName: docSummary.documentName,
-        documentPath: docSummary.documentPath,
-        documentPageNumber: documentPageNumber,
-        imageIndexOnPage: imageIndexOnPage,
-        graphicType: getClassName(graphic),
-        linkStatus: link ? enumToString(safeRead(link, "status")) : "",
-        frame: collectFrameInfo(getGraphicFrame(graphic)),
-        graphicBounds: boundsToObject(safeRead(graphic, "geometricBounds"))
+        documentPath: docSummary.documentPath
     };
 
     if (embedded || (!linkPath && !linkName)) {
@@ -308,58 +275,47 @@ function addGraphicOccurrence(
             linkPath: linkPath,
             fileBaseName: getBaseName(linkName || linkPath),
             occurrenceCount: 0,
-            pages: [],
-            occurrences: []
+            pages: []
         };
         result.imageMap[key] = record;
         result.imageOrder.push(key);
     }
 
     record.occurrenceCount++;
-    record.occurrences.push(occurrence);
-    addPageIfMissing(record.pages, bookPageNumber, pageName);
+    addPageIfMissing(
+        record.pages,
+        docSummary.documentName,
+        docSummary.documentPath,
+        pageName
+    );
     docSeen[key] = true;
 }
 
-function addPageIfMissing(pages, bookPageNumber, pageName) {
+function addPageIfMissing(pages, documentName, documentPath, pageName) {
     for (var i = 0; i < pages.length; i++) {
-        if (pages[i].bookPageNumber === bookPageNumber) {
+        if (
+            pages[i].documentPath === documentPath &&
+            pages[i].pageName === pageName
+        ) {
             return;
         }
     }
     pages.push({
-        bookPageNumber: bookPageNumber,
+        documentName: documentName,
+        documentPath: documentPath,
         pageName: pageName
     });
 }
 
-function collectFrameInfo(frame) {
-    if (!frame) {
-        return null;
+function buildOutputFiles(folder, documentFiles) {
+    var baseName = "";
+    if (documentFiles.length === 1) {
+        baseName = sanitizeFileName(getBaseName(documentFiles[0].name));
+    } else {
+        baseName = "selected_indd_files";
     }
-
-    return {
-        type: getClassName(frame),
-        name: valueOrBlank(safeRead(frame, "name")),
-        label: valueOrBlank(safeRead(frame, "label")),
-        id: valueOrBlank(safeRead(frame, "id")),
-        layer: valueOrBlank(safeRead(safeRead(frame, "itemLayer"), "name")),
-        bounds: boundsToObject(safeRead(frame, "geometricBounds"))
-    };
-}
-
-function getGraphicFrame(graphic) {
-    var parent = safeRead(graphic, "parent");
-    if (!parent) {
-        return null;
-    }
-    return parent;
-}
-
-function buildOutputFiles(folder, bookFile) {
-    var baseName = sanitizeFileName(getBaseName(bookFile.name));
     if (!baseName) {
-        baseName = "book";
+        baseName = "indd_files";
     }
 
     var indexFile = File(folder.fsName + "/" + baseName + "_image_file_index.jsonl");
@@ -411,41 +367,13 @@ function buildSummaryOutput(result, outputFiles) {
         schemaVersion: result.schemaVersion,
         outputFormat: "JSONL/NDJSON",
         generatedAt: result.generatedAt,
-        bookName: result.bookName,
-        bookPath: result.bookPath,
+        sourceType: result.sourceType,
+        sourceFiles: result.sourceFiles,
         imageIndexFile: outputFiles.index.fsName,
         summaryFile: outputFiles.summary.fsName,
         summary: result.summary,
         documents: result.documents
     };
-}
-
-function getBookContentFile(bookContent) {
-    var fullName = safeRead(bookContent, "fullName");
-    if (fullName) {
-        return File(fullName);
-    }
-
-    var filePath = safeRead(bookContent, "filePath");
-    if (filePath) {
-        return File(filePath);
-    }
-
-    return null;
-}
-
-function findOpenBookByPath(file) {
-    var books = safeRead(app, "books");
-    var count = collectionLength(books);
-    for (var i = 0; i < count; i++) {
-        try {
-            var book = books[i];
-            if (pathsEqual(getFilePath(safeRead(book, "fullName")), file.fsName)) {
-                return book;
-            }
-        } catch (error) {}
-    }
-    return null;
 }
 
 function findOpenDocumentByPath(file) {
@@ -620,22 +548,6 @@ function collectionLength(collection) {
     return 0;
 }
 
-function getClassName(obj) {
-    try {
-        if (obj && obj.constructor && obj.constructor.name) {
-            return obj.constructor.name;
-        }
-    } catch (error) {}
-
-    try {
-        return String(obj)
-            .replace(/^\[object /, "")
-            .replace(/\]$/, "");
-    } catch (stringError) {
-        return "";
-    }
-}
-
 function getFilePath(fileLike) {
     if (!fileLike) {
         return "";
@@ -656,48 +568,6 @@ function pathsEqual(a, b) {
 
 function normalizePath(path) {
     return String(path || "").replace(/\\/g, "/").toLowerCase();
-}
-
-function boundsToObject(bounds) {
-    var values = arrayLikeToNumberArray(bounds);
-    if (!values || values.length < 4) {
-        return null;
-    }
-    return {
-        top: values[0],
-        left: values[1],
-        bottom: values[2],
-        right: values[3],
-        width: values[3] - values[1],
-        height: values[2] - values[0]
-    };
-}
-
-function arrayLikeToNumberArray(value) {
-    if (!value || value.length === undefined) {
-        return null;
-    }
-
-    var out = [];
-    for (var i = 0; i < value.length; i++) {
-        var n = Number(value[i]);
-        if (!isFinite(n)) {
-            return null;
-        }
-        out.push(n);
-    }
-    return out;
-}
-
-function enumToString(value) {
-    if (value === null || value === undefined) {
-        return "";
-    }
-    try {
-        return String(value);
-    } catch (error) {
-        return "";
-    }
 }
 
 function valueOrBlank(value) {
@@ -775,5 +645,5 @@ try {
     main();
 } catch (err) {
     var lineText = err.line ? "\n\n行号: " + err.line : "";
-    alert("导出书籍图片文件索引失败:\n\n" + err.message + lineText);
+    alert("导出 InDesign 文档图片文件索引失败:\n\n" + err.message + lineText);
 }

@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 2,
+  "outputFormat": "JSONL/NDJSON",
+  "generatedAt": "2026-05-25 18:56:16",
+  "sourceType": "inddFiles",
+  "sourceFiles": [
+    "/Users/yuedaiyan/code_school/biue_book/c1_me.indd",
+    "/Users/yuedaiyan/code_school/biue_book/c2_day.indd",
+    "/Users/yuedaiyan/code_school/biue_book/c3_diary_event.indd",
+    "/Users/yuedaiyan/code_school/biue_book/c4_character.indd"
+  ],
+  "imageIndexFile": "/Users/yuedaiyan/Library/Preferences/Adobe InDesign/Version 21.0-J/zh_CN/Scripts/Scripts Panel/selected_indd_files_image_file_index.jsonl",
+  "summaryFile": "/Users/yuedaiyan/Library/Preferences/Adobe InDesign/Version 21.0-J/zh_CN/Scripts/Scripts Panel/selected_indd_files_image_file_index_summary.json",
+  "summary": {
+    "documentCount": 4,
+    "pageCount": 418,
+    "graphicPlacementCount": 2700,
+    "uniqueLinkedImageFileCount": 2657,
+    "embeddedGraphicCount": 2,
+    "errorCount": 0
+  },
+  "documents": [
+    {
+      "documentIndex": 1,
+      "documentName": "c1_me.indd",
+      "documentPath": "/Users/yuedaiyan/code_school/biue_book/c1_me.indd",
+      "pageCount": 74,
+      "graphicPlacementCount": 45,
+      "uniqueLinkedImageFileCount": 22,
+      "embeddedGraphicCount": 2
+    },
+    {
+      "documentIndex": 2,
+      "documentName": "c2_day.indd",
+      "documentPath": "/Users/yuedaiyan/code_school/biue_book/c2_day.indd",
+      "pageCount": 182,
+      "graphicPlacementCount": 190,
+      "uniqueLinkedImageFileCount": 188,
+      "embeddedGraphicCount": 0
+    },
+    {
+      "documentIndex": 3,
+      "documentName": "c3_diary_event.indd",
+      "documentPath": "/Users/yuedaiyan/code_school/biue_book/c3_diary_event.indd",
+      "pageCount": 86,
+      "graphicPlacementCount": 1194,
+      "uniqueLinkedImageFileCount": 1177,
+      "embeddedGraphicCount": 0
+    },
+    {
+      "documentIndex": 4,
+      "documentName": "c4_character.indd",
+      "documentPath": "/Users/yuedaiyan/code_school/biue_book/c4_character.indd",
+      "pageCount": 76,
+      "graphicPlacementCount": 1271,
+      "uniqueLinkedImageFileCount": 1270,
+      "embeddedGraphicCount": 0
+    }
+  ]
+}
