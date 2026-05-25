@@ -15,24 +15,24 @@
     // var SOURCE_DOC_NAME = "try_blurred.indd";
 
     // 目标文件名称。必须写目标文件的完整文档名，例如 "target.indd"
-    var TARGET_DOC_NAME = "other_c4_character.indd";
+    var TARGET_DOC_NAME = "c4_character.indd";
 
     // 源文件中要复制的图层名称列表。多个图层可用逗号或换行分隔
-    var SOURCE_LAYER_NAMES = "body_other,body_img";
+    var SOURCE_LAYER_NAMES = "body_other,body_text,body_img,bg_text";
     // var SOURCE_LAYER_NAMES = "body_other\nbody_img";
 
     // 目标文件中要粘贴到的图层名称列表。数量和顺序必须与源图层列表一一对应
-    var TARGET_LAYER_NAMES = "body_other,body_img";
+    var TARGET_LAYER_NAMES = "body_other,body_text,body_img,bg_text";
     // var TARGET_LAYER_NAMES = "body_other\nbody_img";
 
     // 源文件从哪一页开始复制
-    var SOURCE_START_PAGE = 74;
+    var SOURCE_START_PAGE = 2;
 
     // 源文件复制到哪一页结束。脚本会根据起始页和结束页自动计算页数
-    var SOURCE_END_PAGE = 89;
+    var SOURCE_END_PAGE = 30;
 
     // 目标文件从第几页开始粘贴
-    var TARGET_START_PAGE = 20;
+    var TARGET_START_PAGE = 398;
 
     // 是否自动创建目标图层
     var CREATE_TARGET_LAYER_IF_MISSING = false;
