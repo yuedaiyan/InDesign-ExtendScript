@@ -1,8 +1,8 @@
 import pyperclip
 
 # 在这里调整两个数字
-start = 1031
-end = 1350
+start = 1
+end = 440
 
 # 生成数列(包含 start 和 end)
 numbers = "\n".join(str(i) for i in range(start, end + 1))
