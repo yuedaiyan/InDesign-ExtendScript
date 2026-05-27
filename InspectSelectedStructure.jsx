@@ -1,11 +1,22 @@
 /*
-  InspectSelectedStructure.jsx
+  文件: InspectSelectedStructure.jsx
 
-  Select one object or group in InDesign, then run this script from the
-  Scripts panel. It prints a readable tree of the selected object's structure
-  and provides a button to copy the result to the macOS clipboard.
+  用途:
+  - 检查当前选中对象或 Group 的 DOM 结构，并生成可读的树状报告。
+
+  使用前:
+  - 打开 InDesign 文档。
+  - 选中一个或多个对象或组。
+
+  运行流程:
+  1. 运行脚本。
+  2. 查看弹窗中的对象类型、名称、id、label、页面、图层、边界、文本摘要和图像链接信息。
+  3. 需要时点击按钮复制报告到 macOS 剪贴板。
+
+  注意:
+  - 适合在编写或调试模板脚本前确认 Group 内部结构。
+  - 读取属性时做了安全包装，尽量避免 InDesign DOM 特殊属性报错。
 */
-
 (function () {
     try {
         app.doScript(

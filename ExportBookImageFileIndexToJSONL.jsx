@@ -1,10 +1,23 @@
 /*
-  ExportBookImageFileIndexToJSONL.jsx
+  文件: ExportBookImageFileIndexToJSONL.jsx
 
-  Select one or more InDesign documents (.indd), count unique linked image files,
-  and write one JSONL/NDJSON record per image file with document/page locations.
+  用途:
+  - 多选 InDesign 文档，统计其中每个唯一链接图片文件出现在哪些文档和页码。
+  - 输出一个 JSONL/NDJSON 图片索引和一个 summary JSON 摘要。
+
+  使用前:
+  - 准备好要扫描的一个或多个 .indd 文件。
+  - 扫描过程中脚本会临时打开文档，建议先保存当前工作。
+
+  运行流程:
+  1. 运行脚本。
+  2. 选择一个或多个 .indd 文件。
+  3. 等待扫描完成，查看输出 JSONL 和摘要 JSON 的保存路径。
+
+  注意:
+  - 输出文件默认保存在脚本所在目录。
+  - 页码记录使用 InDesign 页面面板显示的页码。
 */
-
 function main() {
     alert(
         "脚本已启动。\n\n" +

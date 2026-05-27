@@ -1,14 +1,23 @@
 /*
-  FillPeopleIndexTableFromJSON.jsx
+  文件: FillPeopleIndexTableFromJSON.jsx
 
-  用法：
-  1. 打开 InDesign 文档。
-  2. 选中一个要灌入数据的文本框。
-  3. 运行本脚本。
-  4. 脚本读取同目录 diary_people_index.json，按 JSON 顺序写入：
-     label<TAB>abbreviation<TAB>count
+  用途:
+  - 读取同目录 diary_people_index.json，将人物索引表写入选中文本框。
+  - 输出格式为 label<TAB>abbreviation<TAB>count。
+
+  使用前:
+  - 打开毕业设计 InDesign 文档。
+  - 选中一个要写入人物索引的文本框。
+  - 确认脚本同目录存在 diary_people_index.json。
+
+  运行流程:
+  1. 运行脚本。
+  2. 脚本按 JSON 顺序生成 tab 分隔文本。
+  3. 将结果写入选中文本框或其所属整条 story。
+
+  注意:
+  - 默认替换整条串接 story，避免后续串接框残留旧内容。
 */
-
 (function () {
     function errorText(error) {
         var parts = [];

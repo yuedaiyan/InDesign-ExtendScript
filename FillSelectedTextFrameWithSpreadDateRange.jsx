@@ -1,5 +1,23 @@
-// FillSelectedTextFrameWithSpreadDateRange.jsx
+/*
+  文件: FillSelectedTextFrameWithSpreadDateRange.jsx
 
+  用途:
+  - 扫描当前选中文本框所在跨页的日期文本，并把日期范围写入该文本框。
+
+  使用前:
+  - 打开要处理的 InDesign 文档。
+  - 选中一个要写入结果的文本框。
+  - 确认同一跨页中存在有效 YYYY-MM-DD 日期。
+
+  运行流程:
+  1. 运行脚本。
+  2. 脚本自动收集同跨页日期，忽略选中的目标文本框。
+  3. 将最小日期和最大日期写成 min—max。
+
+  注意:
+  - 日期会校验真实年月日并去重。
+  - 写入动作包装为一次撤销操作。
+*/
 (function () {
     function main() {
         if (app.documents.length === 0) {

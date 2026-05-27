@@ -1,19 +1,24 @@
 /*
-  GenerateTagLabelsFromJSON.jsx
+  文件: GenerateTagLabelsFromJSON.jsx
 
-  用法：
-  1. 打开 InDesign 文档。
-  2. 选中一个标签模板 Group（组里需要有一个文本框架）。
-  3. 运行本脚本。
-  4. 脚本读取 JSON 中每条 diary entry 的 tags 字段：
-     - 同一条 entry 的 tags 自下而上排列；
-     - 不同 entry 从左到右排列；
-     - 每个生成标签复制模板，替换模板文字，并按 tag 设置文本框背景色；
-     - 同一条 entry 生成出的所有标签会自动编成一个组；
-     - 所有 entry 组生成完成后，会统一向上对齐；
-     - 最后把本次生成的全部 entry 组编成一个大组，并移动到指定左上角坐标。
+  用途:
+  - 根据 diary_entries.merged.json 的 tags 字段生成事件/情绪标签。
+  - 脚本复制标签模板，替换文本，并按 tag 色表设置文本框背景色。
+
+  使用前:
+  - 打开毕业设计 InDesign 文档。
+  - 选中一个标签模板 Group，组内需要有文本框。
+  - 确认同目录存在 diary_entries.merged.json。
+
+  运行流程:
+  1. 运行脚本。
+  2. 输入生成对象标签和起始 JSON id。
+  3. 脚本从该条 entry 开始生成标签，并将同一 entry 的标签编组。
+
+  注意:
+  - 同一 entry 的 tags 自下而上排列，不同 entry 从左到右排列。
+  - 脚本会自动创建或复用 tag_bg_* 色板。
 */
-
 (function () {
     function errorText(error) {
         var parts = [];

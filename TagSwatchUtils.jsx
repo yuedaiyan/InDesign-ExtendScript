@@ -1,17 +1,21 @@
 /*
-  TagSwatchUtils.jsx
+  文件: TagSwatchUtils.jsx
 
-  独立色板建立脚本。
+  用途:
+  - 按脚本顶部 TEMPLATE_NAME 创建一组 RGB Process 色板。
 
-  用法：
-  1. 打开 InDesign 文档。
-  2. 修改下面 TEMPLATE_NAME，选择要建立的颜色模板。
-  3. 运行本脚本。
+  使用前:
+  - 打开要添加色板的 InDesign 文档。
+  - 如需切换模板，先修改 TEMPLATE_NAME，可选 tag_colors、sample_warm 或 sample_cool。
 
-  这个文件不被 GenerateTagLabelsFromJSON.jsx 引用，
-  两个脚本之间没有依赖关系。
+  运行流程:
+  1. 运行脚本。
+  2. 脚本创建或复用对应名称的 RGB 色板。
+  3. 完成后显示创建数量。
+
+  注意:
+  - 这个文件不被 GenerateTagLabelsFromJSON.jsx 引用，两者没有代码依赖。
 */
-
 (function () {
     if (app.documents.length === 0) {
         alert("请先打开一个 InDesign 文档。");

@@ -1,5 +1,23 @@
-// DeleteDuplicateTextFramesBySelectedContent.jsx
+/*
+  文件: DeleteDuplicateTextFramesBySelectedContent.jsx
 
+  用途:
+  - 以当前选中文本框的内容为准，删除文档中其他内容完全相同的文本框。
+
+  使用前:
+  - 打开要清理的 InDesign 文档。
+  - 选中一个作为匹配依据的文本框。
+
+  运行流程:
+  1. 运行脚本。
+  2. 脚本会扫描可见且未锁定的文本框，并显示将删除的重复数量。
+  3. 确认后删除重复文本框。
+
+  注意:
+  - 不会删除当前选中的源文本框。
+  - 只匹配内容完全一致的文本框；隐藏、锁定对象会被跳过。
+  - 删除动作包装为一次撤销操作。
+*/
 function main() {
     if (app.documents.length === 0) {
         alert("请先打开一个 InDesign 文档。");

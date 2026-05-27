@@ -1,5 +1,25 @@
-// FillDateRangeByPositionAcrossPages.jsx
+/*
+  文件: FillDateRangeByPositionAcrossPages.jsx
 
+  用途:
+  - 以当前选中文本框的位置为锚点，在指定页面范围内寻找相同位置的文本框。
+  - 为每个目标文本框填入其所在跨页的有效日期范围。
+
+  使用前:
+  - 打开要处理的 InDesign 文档。
+  - 选中一个作为位置模板的文本框。
+  - 确认目标跨页中存在形如 YYYY-MM-DD 的日期文本。
+
+  运行流程:
+  1. 运行脚本。
+  2. 输入要处理的页面范围。
+  3. 脚本按页面相对位置匹配文本框，并写入 min—max 日期范围。
+
+  注意:
+  - 页码按页面面板显示值解析。
+  - 日期会校验真实年月日、去重并排序。
+  - 写入动作包装为一次撤销操作。
+*/
 (function () {
     var POSITION_TOLERANCE_POINTS = 2;
 

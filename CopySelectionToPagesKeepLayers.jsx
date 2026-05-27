@@ -1,5 +1,24 @@
-// Copy selected page items to specified spreads, preserving spread-relative position and layers.
+/*
+  文件: CopySelectionToPagesKeepLayers.jsx
 
+  用途:
+  - 把当前跨页上选中的页面对象复制到指定目标跨页。
+  - 复制时尽量保持相对跨页位置和原图层。
+
+  使用前:
+  - 打开要处理的 InDesign 文档。
+  - 在同一个跨页上选中需要复制的对象。
+  - 确认目标页码使用 InDesign 页面面板显示的页码。
+
+  运行流程:
+  1. 运行脚本。
+  2. 在弹窗中输入目标页码/跨页范围，并选择是否跳过源跨页。
+  3. 确认后脚本会复制对象并报告复制、跳过和失败数量。
+
+  注意:
+  - 当前选区必须来自同一个跨页。
+  - 目标文档图层需要存在；脚本会尽量恢复图层锁定状态。
+*/
 (function () {
     try {
         if (app.documents.length === 0) {

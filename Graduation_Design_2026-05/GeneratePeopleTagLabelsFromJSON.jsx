@@ -1,17 +1,24 @@
 /*
-  GeneratePeopleTagLabelsFromJSON.jsx
+  文件: GeneratePeopleTagLabelsFromJSON.jsx
 
-  用法：
-  1. 打开 InDesign 文档。
-  2. 选中一个人物标签模板 Group（组里至少需要有一个文本框架）。
-  3. 运行本脚本。
-  4. 脚本读取 diary_entries.merged.json 中每条 diary entry 的 people_tags 字段：
-     - 用 diary_people_index.json 查找每个人名对应的 label；
-     - 同一条 entry 的人物 label 自下而上排列；
-     - 不同 entry 从左到右排列；
-     - 每个生成标签复制模板，只替换复制组里的文本框文字，不改变文本框底色。
+  用途:
+  - 根据 diary_entries.merged.json 的 people_tags 字段生成人物编号标签。
+  - 脚本会用 diary_people_index.json 将人名映射为人物 label。
+
+  使用前:
+  - 打开毕业设计 InDesign 文档。
+  - 选中一个人物标签模板 Group，组内至少需要一个文本框。
+  - 确认同目录存在 diary_entries.merged.json 和 diary_people_index.json。
+
+  运行流程:
+  1. 运行脚本。
+  2. 输入生成对象标签和起始 JSON id。
+  3. 脚本从该条 diary entry 开始，按 JSON 顺序复制模板生成标签。
+
+  注意:
+  - 同一 entry 的人物 label 自下而上排列，不同 entry 从左到右排列。
+  - 默认不改变模板底色。
 */
-
 (function () {
     function errorText(error) {
         var parts = [];

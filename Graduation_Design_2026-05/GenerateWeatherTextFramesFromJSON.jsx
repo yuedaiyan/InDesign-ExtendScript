@@ -1,20 +1,24 @@
 /*
-  GenerateWeatherTextFramesFromJSON.jsx
+  文件: GenerateWeatherTextFramesFromJSON.jsx
 
-  用法：
-  1. 打开 InDesign 文档。
-  2. 选中一个天气文本框模板。
-     - 如果选中的是 Group，也会复制整个 Group，并填充其中所有文本框。
-     - 如果选中的是文本框本身，则只横向复制这个文本框。
-  3. 运行本脚本。
-  4. 脚本读取 diary_entries.merged.json 中每条 diary entry 的 weather 字段：
-     - 每条 entry 生成一个复制文本框；
-     - 不同 entry 从左到右排列；
-     - weather 为 null / undefined 时，复制一个空文本框；
-     - weather 为对象时，合成为三行三列文本，每列之间用 tab 对齐；
-     - weather 为字符串时，原样写入文本框，兼容旧 JSON。
+  用途:
+  - 根据 diary_entries.merged.json 的 weather 字段生成天气文本框。
+  - weather 对象会被格式化为多行、tab 对齐的文本。
+
+  使用前:
+  - 打开毕业设计 InDesign 文档。
+  - 选中一个天气文本框模板，或选中包含文本框的 Group。
+  - 确认同目录存在 diary_entries.merged.json。
+
+  运行流程:
+  1. 运行脚本。
+  2. 输入生成对象标签和起始 JSON id。
+  3. 脚本复制模板并按 entry 顺序生成天气文本。
+
+  注意:
+  - weather 为空时生成空文本框；weather 为字符串时原样写入。
+  - 如果选中 Group，会复制整个 Group 并填充其中所有文本框。
 */
-
 (function () {
     function errorText(error) {
         var parts = [];

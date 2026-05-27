@@ -1,16 +1,25 @@
 /*
-  AutoBuildImageIndexFromJSONL.jsx
+  文件: AutoBuildImageIndexFromJSONL.jsx
 
-  按指定页面自动生成图片索引：
-  - 找到页面上未锁定、可编辑的文本框
-  - 对每个文本框，收集其正上方同一列的图片框
-  - 图片框按从上到下排序，命名为 Form 1, Form 2 ...
-  - 从 JSONL 图片索引中查找每张图片出现的页码
-  - 将 Form 和页码表写入对应文本框
+  用途:
+  - 按页面范围自动生成图片 Form 索引。
+  - 脚本会找每个可编辑文本框正上方同一列的图片框，将图片框命名为 Form 1、Form 2 等，并从 JSONL 图片索引中查找页码。
 
-  写入文本框和命名图片框会被包装为一次 InDesign 撤销操作。
+  使用前:
+  - 打开毕业设计 InDesign 文档。
+  - 准备图片索引 JSONL，默认可使用同目录 selected_indd_files_image_file_index.jsonl。
+  - 确认待写入文本框位于对应图片列下方且未锁定。
+
+  运行流程:
+  1. 运行脚本。
+  2. 输入要处理的页面范围。
+  3. 选择或确认图片索引 JSONL 文件。
+  4. 查看预览，确认后写入 Form N:	page1,page2 形式的索引。
+
+  注意:
+  - 页面范围使用 InDesign 显示页码。
+  - 写入文本框和命名图片框包装为一次撤销操作。
 */
-
 var FORM_NAME_PREFIX = "Form ";
 var COLUMN_SIDE_TOLERANCE_POINTS = 4;
 var MAX_NEAREST_IMAGE_GAP_POINTS = 36;

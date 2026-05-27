@@ -1,23 +1,23 @@
-// =========================
-// 1． 遍历整个 InDesign 文档的所有页面；
-// 2． 找到页面上的所有文本框；
+/*
+  文件: fill_diary_info_from_json.jsx
 
-// 3. 读取文本框里的日期，例如：
-// Plain text
-// 2026-01-13
-// 2026-01-30
-// 2026-01-30_2
+  用途:
+  - 扫描文档中内容像日期的文本框，并用日记 JSON 中的 date / location / time_of_day 替换文本框内容。
 
-// 4.去读取：
-// Plain text
-// /Users/yuedaiyan/code_school/biue_All/diary_entries.json
+  使用前:
+  - 打开毕业设计 InDesign 文档。
+  - 确认 JSON_PATH 指向的 /Users/yuedaiyan/code_school/biue_All/diary_entries.json 存在，或先修改脚本顶部路径。
+  - 确认待处理文本框内容形如 YYYY-MM-DD 或 YYYY-MM-DD_N。
 
-// 5. 根据 date 找到对应 JSON 条目；
-// 6. 如果出现 2026-01-30_2，就找JSON 里第二个"date"："2026-01-30"的条目；
-// 7. 把文本框内容替换成：
+  运行流程:
+  1. 运行脚本。
+  2. 脚本遍历文档页面和组内文本框。
+  3. 按日期和可选序号匹配日记条目，并写入配置模板中的字段。
 
-// =========================
-
+  注意:
+  - 这是较早的固定路径脚本；如果 JSON 已迁移，先修改 JSON_PATH。
+  - 默认找不到匹配项时保留原文本。
+*/
 function main() {
     if (app.documents.length === 0) {
         alert("请先打开一个 InDesign 文档。");

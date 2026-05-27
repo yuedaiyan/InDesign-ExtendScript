@@ -1,17 +1,25 @@
 /*
-  AutoFillDiaryMetaFromTopImage.jsx
+  文件: AutoFillDiaryMetaFromTopImage.jsx
 
-  按指定页面自动填充日记元信息：
-  - 找到页面上未锁定、可编辑的文本框
-  - 对每个文本框，查找其正上方同一列的图片框
-  - 只取这些图片框中最高的一张
-  - 从图片文件名中解析日期和可选编号，例如 2022-04-11.png、2020-02-20_2.png
-  - 在 diary_entries.merged.json 中按日期和编号查找对应条目
-  - 将 date / location / time_of_day 写入文本框
+  用途:
+  - 按页面范围自动填充日记元信息。
+  - 脚本会找每个可编辑文本框正上方同一列最高的图片，从图片文件名解析日期和序号，再匹配 diary_entries.merged.json。
 
-  写入文本框会被包装为一次 InDesign 撤销操作。
+  使用前:
+  - 打开毕业设计 InDesign 文档。
+  - 准备 diary_entries.merged.json。
+  - 确认图片文件名包含 YYYY-MM-DD 或 YYYY-MM-DD_N。
+
+  运行流程:
+  1. 运行脚本。
+  2. 输入要处理的页面范围。
+  3. 选择或确认日记 JSON 文件。
+  4. 查看预览，确认后写入 date / location / time_of_day 信息。
+
+  注意:
+  - 默认优先使用 /Users/yuedaiyan/code_school/biue_code_text/diary_entries.merged.json；找不到时会尝试同目录文件。
+  - 写入动作包装为一次撤销操作。
 */
-
 var DEFAULT_DIARY_JSON_PATH =
     "/Users/yuedaiyan/code_school/biue_code_text/diary_entries.merged.json";
 var COLUMN_SIDE_TOLERANCE_POINTS = 4;
