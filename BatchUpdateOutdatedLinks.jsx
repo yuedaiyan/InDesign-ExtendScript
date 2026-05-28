@@ -11,17 +11,17 @@
   运行流程:
   1. 运行脚本。
   2. 脚本扫描当前文档中需要更新的链接。
-  3. 查看总数量、批次数和第一批预览。
-  4. 确认后自动按每 100 个一批更新，直到扫描到的待更新链接都处理完。
+  3. 查看待更新总数和本批 100 个链接的预览。
+  4. 确认后只更新本批 100 个链接，然后结束脚本。
 
   注意:
-  - 每 100 个链接会包装为一次撤销操作，避免把 6000 多个链接塞进同一个超大撤销事务。
-  - 如果处理了很多批，撤销时需要按批次多次 Cmd+Z。
+  - 本批 100 个链接会包装为一次撤销操作。
+  - 不在脚本内部自动循环到全部完成，因为 InDesign 会长时间占住主线程，看起来像卡死。
+  - 要继续处理剩余链接，请再次运行脚本。
   - 脚本默认只处理 LINK_OUT_OF_DATE，不处理缺失链接或已正常链接。
 */
 function main() {
-    var BATCH_SIZE = 100;
-    var PAUSE_MS_BETWEEN_BATCHES = 300;
+    var BATCH_SIZE = 300;
 
     if (app.documents.length === 0) {
         alert("请先打开一个 InDesign 文档。");
@@ -47,7 +47,7 @@ function main() {
         return;
     }
 
-    var batches = buildBatches(scan.items, BATCH_SIZE);
+    var batch = buildFirstBatch(scan.items, BATCH_SIZE);
 
     var confirmMsg =
         "文档链接总数: " +
@@ -56,45 +56,36 @@ function main() {
         "检测到待更新链接: " +
         scan.items.length +
         " 个\n" +
-        "每批处理: " +
-        BATCH_SIZE +
-        " 个\n" +
-        "将自动执行批次: " +
-        batches.length +
-        " 批\n";
+        "本次将更新: " +
+        batch.length +
+        " 个\n";
     confirmMsg += buildStatusSummary(scan.statusCounts);
-    confirmMsg += "\n\n第一批预览:\n" + buildLinkPreview(batches[0], 15);
-    confirmMsg +=
-        "\n\n注意：脚本会自动跑完所有批次，但每 100 个链接是一个单独撤销步骤。" +
-        "\n如果要撤销全部批次，需要连续按多次 Cmd+Z。";
-    confirmMsg += "\n\n是否继续自动更新全部待更新链接？";
+    confirmMsg += "\n\n本批预览:\n" + buildLinkPreview(batch, 15);
+    if (scan.items.length > batch.length) {
+        confirmMsg +=
+            "\n\n本次完成后还会剩余约 " +
+            (scan.items.length - batch.length) +
+            " 个待更新链接。为了避免卡死，脚本不会自动继续；请再次运行脚本处理下一批。";
+    }
+    confirmMsg += "\n\n是否继续更新本批链接？";
 
     if (!confirm(confirmMsg)) return;
 
     var result = {
         success: 0,
         failed: [],
-        batchCount: 0
     };
 
-    for (var batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-        updateOneBatch(batches[batchIndex], batchIndex + 1, batches.length, result);
-
-        if (PAUSE_MS_BETWEEN_BATCHES > 0 && batchIndex < batches.length - 1) {
-            try {
-                $.sleep(PAUSE_MS_BETWEEN_BATCHES);
-            } catch (sleepErr) {}
-        }
-    }
+    updateOneBatch(batch, result);
 
     var report =
-        "全部批次处理完成。\n\n" +
+        "本批链接更新完成。\n\n" +
         "检测到待更新链接: " +
         scan.items.length +
         " 个\n" +
-        "已执行批次: " +
-        result.batchCount +
-        " 批\n" +
+        "本批计划更新: " +
+        batch.length +
+        " 个\n" +
         "成功更新: " +
         result.success +
         " 个\n" +
@@ -106,21 +97,26 @@ function main() {
         report += "\n失败明细:\n" + listPreview(result.failed, 20);
     }
 
-    report +=
-        "\n\n本脚本按每 " +
-        BATCH_SIZE +
-        " 个链接建立一个撤销步骤；如需全部撤销，请按批次数连续撤销。";
+    if (scan.items.length > batch.length) {
+        report +=
+            "\n\n运行前检测到剩余待更新链接约 " +
+            (scan.items.length - batch.length) +
+            " 个。再次运行脚本会重新扫描并处理下一批。";
+    }
+
+    report += "\n\n需要撤销时，按一次 Cmd+Z 即可撤销本批更新。";
     alert(report);
 }
 
-function updateOneBatch(batch, batchNumber, totalBatches, result) {
+function updateOneBatch(batch, result) {
     app.doScript(
         function () {
             var oldRedraw = app.scriptPreferences.enableRedraw;
             var oldUserInteraction = app.scriptPreferences.userInteractionLevel;
 
             app.scriptPreferences.enableRedraw = false;
-            app.scriptPreferences.userInteractionLevel = UserInteractionLevels.NEVER_INTERACT;
+            app.scriptPreferences.userInteractionLevel =
+                UserInteractionLevels.NEVER_INTERACT;
 
             try {
                 for (var i = 0; i < batch.length; i++) {
@@ -129,11 +125,10 @@ function updateOneBatch(batch, batchNumber, totalBatches, result) {
                         result.success++;
                     } catch (updateErr) {
                         result.failed.push(
-                            "第 " + batchNumber + "/" + totalBatches + " 批 - " + batch[i].name + " - " + updateErr.message
+                            batch[i].name + " - " + updateErr.message,
                         );
                     }
                 }
-                result.batchCount++;
             } finally {
                 app.scriptPreferences.userInteractionLevel = oldUserInteraction;
                 app.scriptPreferences.enableRedraw = oldRedraw;
@@ -142,7 +137,7 @@ function updateOneBatch(batch, batchNumber, totalBatches, result) {
         ScriptLanguage.JAVASCRIPT,
         undefined,
         UndoModes.ENTIRE_SCRIPT,
-        "分批更新链接 " + batchNumber + "/" + totalBatches
+        "分批更新链接",
     );
 }
 
@@ -160,29 +155,21 @@ function getDocumentLinks(doc) {
     }
 }
 
-function buildBatches(items, batchSize) {
-    var batches = [];
-    var currentBatch = [];
+function buildFirstBatch(items, batchSize) {
+    var batch = [];
+    var count = Math.min(items.length, batchSize);
 
-    for (var i = 0; i < items.length; i++) {
-        currentBatch.push(items[i]);
-        if (currentBatch.length === batchSize) {
-            batches.push(currentBatch);
-            currentBatch = [];
-        }
+    for (var i = 0; i < count; i++) {
+        batch.push(items[i]);
     }
 
-    if (currentBatch.length > 0) {
-        batches.push(currentBatch);
-    }
-
-    return batches;
+    return batch;
 }
 
 function collectOutdatedLinks(links) {
     var result = {
         items: [],
-        statusCounts: {}
+        statusCounts: {},
     };
 
     for (var i = 0; i < links.length; i++) {
@@ -196,7 +183,7 @@ function collectOutdatedLinks(links) {
             link: link,
             name: safeLinkName(link),
             path: safeLinkPath(link),
-            statusText: statusText
+            statusText: statusText,
         });
     }
 
@@ -208,7 +195,10 @@ function isOutdatedStatus(statusText, link) {
         if (link.status === LinkStatus.LINK_OUT_OF_DATE) return true;
     } catch (e1) {}
 
-    return statusText.indexOf("LINK_OUT_OF_DATE") >= 0 || statusText.indexOf("OUT_OF_DATE") >= 0;
+    return (
+        statusText.indexOf("LINK_OUT_OF_DATE") >= 0 ||
+        statusText.indexOf("OUT_OF_DATE") >= 0
+    );
 }
 
 function getLinkStatusText(link) {
