@@ -26,6 +26,7 @@
 | `PlaceImagesAcrossPagesIntoNamedEmptyFrames.jsx` | 从选中起始页开始，逐页收集空图片框，按框架名称中的数字结构排序，再把多选图片按文件名顺序置入。执行前会展示逐页置入计划。 | 只选中一个起始空图片框；各页空框名称要包含可排序数字。 |
 | `ReplaceSelectedImagesFromFolder.jsx` | 用新文件夹中的同名文件替换当前选中图片框里已有的置入图片。优先匹配完整文件名，找不到时用去扩展名后的唯一同名文件匹配。 | 选中一个或多个已有图片的图片框或包含图片框的组。 |
 | `ReplaceMissingImagesFromFolder.jsx` | 扫描当前文档中缺失链接的图片，从指定文件夹里按文件名寻找替换文件，并批量重新置入/更新。脚本会显示可替换和不可处理项目。 | 打开包含缺失链接的文档；选择替换图片文件夹。 |
+| `BatchUpdateOutdatedLinks.jsx` | 分批更新当前文档中状态为 `LINK_OUT_OF_DATE` 的链接。确认后自动按每 100 个一批循环处理，每批都是一个独立撤销步骤。 | 打开包含待更新链接的文档；建议先保存文档。 |
 | `ExportBookImageFileIndexToJSONL.jsx` | 多选 `.indd` 文件，统计每个唯一链接图片文件出现在哪些文档和页码，输出 JSONL/NDJSON 索引和 summary JSON。 | 选择一个或多个 InDesign 文件。 |
 | `CopySelectionToPagesKeepLayers.jsx` | 把当前跨页上选中的对象复制到指定目标跨页，保持相对跨页位置，并尽量保留原图层。 | 在同一跨页上选中要复制的页面对象。 |
 | `MoveContentAcrossFiles.jsx` | 在两个已打开文档之间，按指定源/目标图层和页码范围批量复制页面对象。默认会弹出设置窗口，也可改脚本顶部配置后直接执行。 | 至少打开源文档和目标文档；确认文档名、图层名、页码范围。 |
