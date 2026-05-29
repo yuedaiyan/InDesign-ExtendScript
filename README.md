@@ -35,6 +35,7 @@
 | `FillDateRangeByPositionAcrossPages.jsx` | 以当前选中文本框的位置为锚点，在用户输入的页码范围内寻找相同位置的文本框，并分别填入其所在跨页的日期范围。 | 选中一个作为位置模板的文本框；输入页码范围。 |
 | `DeleteDuplicateTextFramesBySelectedContent.jsx` | 以当前选中文本框内容为准，扫描当前文档中其他内容完全相同、可见且未锁定的文本框，确认后删除重复项。 | 选中一个文本框；确认删除预览。 |
 | `RemoveAllGrid.jsx` | 删除当前活动文档中的全部参考线。脚本会先统计参考线数量并弹出确认，删除动作支持一次撤销。 | 打开文档；确认删除全部参考线。 |
+| `InspectSelectedObjectInfo.jsx` | 输出当前选中对象的详细诊断信息，重点显示对象类型、是否为参考线、主页/跨页/页面来源、图层和锁定状态、父级链路，可用于判断对象为什么删不掉。 | 选中一个或多个需要检查的对象。 |
 | `InspectSelectedStructure.jsx` | 输出当前选中对象或组的树状结构，包括类型、名称、id、label、页码、图层、边界、文本摘要和图像链接信息，并支持复制到剪贴板。 | 选中一个或多个对象或组。 |
 | `TagSwatchUtils.jsx` | 按脚本顶部 `TEMPLATE_NAME` 创建一组 RGB Process 色板。内置 `tag_colors`、`sample_warm`、`sample_cool`。 | 打开文档；需要时先修改 `TEMPLATE_NAME`。 |
 | `lineNumber.py` | 生成从 `start` 到 `end` 的连续数字，每行一个，并复制到剪贴板。它是 Python 辅助脚本，不在 InDesign 内运行。 | 本机 Python 环境有 `pyperclip`；按需修改脚本顶部数字。 |
